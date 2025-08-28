@@ -28,10 +28,10 @@ function ChatContainer() {
       toast.error("Select a valid image file");
       return;
     }
-  
+
     const reader = new FileReader();
     reader.onloadend = async () => {
-      await sendMessage({ text: "", image: reader.result });
+      await sendMessage({ image: reader.result });
       e.target.value = "";
     };
     reader.readAsDataURL(file);
