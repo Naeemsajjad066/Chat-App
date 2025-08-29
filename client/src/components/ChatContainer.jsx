@@ -65,6 +65,7 @@ function ChatContainer() {
           {selectedUser?.fullName}
           {onlineUser.includes(selectedUser._id) ? (
             <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            
           ) : (
             <span className="w-2 h-2 rounded-full bg-gray-500"></span>
           )}
