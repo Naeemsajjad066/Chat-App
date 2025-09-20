@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { AuthContext } from "./AuthContext";
 import toast from "react-hot-toast";
+import { encryptMessage, decryptMessage } from "../lib/cryptoUtils";
 
 export const ChatContext = createContext();
 
@@ -10,42 +11,38 @@ export const ChatProvider = ({ children }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [unseenMessages, setUnseenMessages] = useState({});
 
-  const { socket, axios } = useContext(AuthContext);
-
-
+  const { socket, axios, authUser } = useContext(AuthContext);
 
   // ------------------- DELETE MESSAGES -------------------
   const deleteMessages = async () => {
     if (!selectedUser) return;
-
-    const confirmDelete=window.confirm("Are u sure!");
-
-    if(!confirmDelete) return;
+    const confirmDelete = window.confirm("Are you sure?");
+    if (!confirmDelete) return;
 
     try {
-        if(!messages || messages.length===0){
-            toast.error("No Messages Found")
-            return;
-        }
-      const { data } = await axios.delete(`/api/messages/delete/${selectedUser._id}`);
+      if (!messages || messages.length === 0) {
+        toast.error("No Messages Found");
+        return;
+      }
+
+      const { data } = await axios.delete(
+        `/api/messages/delete/${selectedUser._id}`
+      );
+
       if (data.success) {
         setMessages([]);
-        // Notify other user via socket
-        socket.emit("messagesDeleted", { withUser: selectedUser._id });
+        socket?.emit("messagesDeleted", { withUser: selectedUser._id });
+        setUnseenMessages((prev) => {
+          const newUnseen = { ...prev };
+          delete newUnseen[selectedUser._id];
+          return newUnseen;
+        });
         toast.success("Messages Deleted Successfully");
-      } else {
-        toast.error(data.message);
-      }
+      } else toast.error(data.message);
     } catch (error) {
       toast.error(error.message);
     }
   };
-
-
-
-
-
-
 
   // ------------------- GET USERS -------------------
   const getUsers = async () => {
@@ -62,10 +59,26 @@ export const ChatProvider = ({ children }) => {
 
   // ------------------- GET MESSAGES -------------------
   const getMessages = async (userId) => {
+    if (!userId) return;
     try {
       const { data } = await axios.get(`/api/messages/${userId}`);
       if (data.success) {
-        setMessages(data.messages);
+        const privateKey = localStorage.getItem("privateKey");
+        if (!privateKey) throw new Error("Private key missing in localStorage");
+
+        const decryptedMessages = await Promise.all(
+          data.messages.map(async (msg) => {
+            if (msg.text && msg.senderId !== authUser?._id) {
+              try {
+                msg.text = await decryptMessage(msg.text, privateKey);
+              } catch (err) {
+                console.error("Decryption failed", err);
+              }
+            }
+            return msg;
+          })
+        );
+        setMessages(decryptedMessages);
       }
     } catch (error) {
       toast.error(error.message);
@@ -74,42 +87,62 @@ export const ChatProvider = ({ children }) => {
 
   // ------------------- SEND MESSAGE -------------------
   const sendMessage = async (messageData) => {
+    if (!selectedUser) return;
+    if (!selectedUser.publicKey) {
+      toast.error("Recipient has no public key.");
+      return;
+    }
+
     try {
+      const encryptedText = await encryptMessage(
+        messageData.text,
+        selectedUser.publicKey
+      );
+
       const { data } = await axios.post(
         `/api/messages/send/${selectedUser._id}`,
-        messageData
+        { ...messageData, text: encryptedText }
       );
+
       if (data.success) {
-        setMessages((prevMessages) => [...prevMessages, data.newMessage]);
-      } else {
-        toast.error(data.message);
-      }
+        setMessages((prev) => [
+          ...prev,
+          { ...data.newMessage, text: messageData.text }, // show plaintext locally
+        ]);
+      } else toast.error(data.message);
     } catch (error) {
       toast.error(error.message);
     }
   };
 
-  // ------------------- SOCKET SUBSCRIPTION -------------------
-  const subscribeToMessages = async () => {
+  // ------------------- SOCKET -------------------
+  const subscribeToMessages = () => {
     if (!socket) return;
 
-    // Listen for new messages
-    socket.on("newMessage", (newMessage) => {
+    socket.on("newMessage", async (newMessage) => {
+      if (!authUser) return;
+
+      const privateKey = localStorage.getItem("privateKey");
+      if (newMessage.senderId !== authUser._id && newMessage.text && privateKey) {
+        try {
+          newMessage.text = await decryptMessage(newMessage.text, privateKey);
+        } catch (err) {
+          console.error("Decryption failed", err);
+        }
+      }
+
       if (selectedUser && newMessage.senderId === selectedUser._id) {
         newMessage.seen = true;
-        setMessages((prevMessages) => [...prevMessages, newMessage]);
+        setMessages((prev) => [...prev, newMessage]);
         axios.put(`/api/messages/mark/${newMessage._id}`);
       } else {
-        setUnseenMessages((prevUnseenMessages) => ({
-          ...prevUnseenMessages,
-          [newMessage.senderId]: prevUnseenMessages[newMessage.senderId]
-            ? prevUnseenMessages[newMessage.senderId] + 1
-            : 1,
+        setUnseenMessages((prev) => ({
+          ...prev,
+          [newMessage.senderId]: (prev[newMessage.senderId] || 0) + 1,
         }));
       }
     });
 
-    // Listen for deleted messages
     socket.on("messagesDeleted", ({ withUser }) => {
       if (selectedUser && withUser === selectedUser._id) {
         setMessages([]);
@@ -122,20 +155,16 @@ export const ChatProvider = ({ children }) => {
     });
   };
 
-  // ------------------- UNSUBSCRIBE -------------------
   const unsubscribeFromMessages = () => {
-    if (socket) {
-      socket.off("newMessage");
-      socket.off("messagesDeleted");
-    }
+    socket?.off("newMessage");
+    socket?.off("messagesDeleted");
   };
 
   useEffect(() => {
     subscribeToMessages();
     return () => unsubscribeFromMessages();
-  }, [socket, selectedUser]);
+  }, [socket, selectedUser, authUser]);
 
-  // ------------------- CONTEXT VALUE -------------------
   const value = {
     messages,
     users,
