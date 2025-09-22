@@ -68,9 +68,14 @@ export const ChatProvider = ({ children }) => {
 
         const decryptedMessages = await Promise.all(
           data.messages.map(async (msg) => {
-            if (msg.text && msg.senderId !== authUser?._id) {
+            if (msg.text) {
               try {
-                msg.text = await decryptMessage(msg.text, privateKey);
+                // 🔑 Each message stores ciphertext for both participants
+                msg.text = await decryptMessage(
+                  msg.text,
+                  privateKey,
+                  authUser._id
+                );
               } catch (err) {
                 console.error("Decryption failed", err);
               }
@@ -94,9 +99,15 @@ export const ChatProvider = ({ children }) => {
     }
 
     try {
+      // 🔑 Encrypt separately for both users
+      const participants = [
+        { userId: selectedUser._id, publicKeyBase64: selectedUser.publicKey },
+        { userId: authUser._id, publicKeyBase64: authUser.publicKey },
+      ];
+
       const encryptedText = await encryptMessage(
         messageData.text,
-        selectedUser.publicKey
+        participants
       );
 
       const { data } = await axios.post(
@@ -105,11 +116,14 @@ export const ChatProvider = ({ children }) => {
       );
 
       if (data.success) {
+        // Show plaintext locally for sender
         setMessages((prev) => [
           ...prev,
-          { ...data.newMessage, text: messageData.text }, // show plaintext locally
+          { ...data.newMessage, text: messageData.text },
         ]);
-      } else toast.error(data.message);
+      } else {
+        toast.error(data.message);
+      }
     } catch (error) {
       toast.error(error.message);
     }
@@ -123,9 +137,13 @@ export const ChatProvider = ({ children }) => {
       if (!authUser) return;
 
       const privateKey = localStorage.getItem("privateKey");
-      if (newMessage.senderId !== authUser._id && newMessage.text && privateKey) {
+      if (newMessage.text && privateKey) {
         try {
-          newMessage.text = await decryptMessage(newMessage.text, privateKey);
+          newMessage.text = await decryptMessage(
+            newMessage.text,
+            privateKey,
+            authUser._id
+          );
         } catch (err) {
           console.error("Decryption failed", err);
         }
