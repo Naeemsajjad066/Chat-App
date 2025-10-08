@@ -4,12 +4,12 @@ import { ChatContext } from '../context/ChatContext'
 import { AuthContext } from '../context/AuthContext'
 
 function RightSideBar() {
-     const {selectedUser,messages}=useContext(ChatContext)
+     const {selectedUser,messages,deleteMessages}=useContext(ChatContext)
 
      const {logout,onlineUser}=useContext(AuthContext)
 
      const [msgImages,setMsgImages]=useState([])
-
+    
     // get all the images from messages and set them to state
     useEffect(()=>{
         setMsgImages(
@@ -30,6 +30,12 @@ function RightSideBar() {
                 </p>
 
         </div>
+        <div className='flex items-center justify-center mt-4 text-xs font-bold  '>
+            <button onClick={deleteMessages}  className='p-2 rounded-lg bg-blue-700 hover:bg-red-600 
+            cursor-pointer transition'>
+                Delete Messages
+            </button>
+            </div>
         <hr className='border-[#ffffff50] my-4' />
         <div className='px-5 text-xs'>
             <p>Media</p>
