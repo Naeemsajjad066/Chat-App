@@ -3,16 +3,48 @@ import assets from "../assets/assets";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { ChatContext } from "../context/ChatContext";
+import toast from "react-hot-toast";
 
 function SideBar() {
 
   const{getUsers,users,selectedUser,setSelectedUser,unseenMessages,setUnseenMessages}=useContext(ChatContext)
   const [input,setInput]=useState("")
-  const {logout,onlineUser}=useContext(AuthContext)
+  const {logout,onlineUser,ensureKeysExist,authUser}=useContext(AuthContext)
   const navigate = useNavigate();
 
+  const handleRegenerateKeys = async () => {
+    const confirm = window.confirm(
+      "This will generate new encryption keys. You may not be able to decrypt old messages. Continue?"
+    );
+    if (confirm && authUser) {
+      try {
+        await ensureKeysExist(authUser);
+        toast.success("Encryption keys regenerated successfully!");
+      } catch (error) {
+        toast.error("Failed to regenerate keys");
+      }
+    }
+  };
 
-  const filterUsers=input?users.filter((user)=>user.fullName.toLowerCase().includes(input.toLowerCase())) : users
+
+  // Filter users by search input
+  const searchFilteredUsers = input 
+    ? users.filter((user) => user.fullName.toLowerCase().includes(input.toLowerCase())) 
+    : users;
+
+  // Sort users: online users first, then offline users
+  const sortedUsers = searchFilteredUsers.sort((a, b) => {
+    const aIsOnline = onlineUser.includes(a._id);
+    const bIsOnline = onlineUser.includes(b._id);
+    
+    // If both have same online status, maintain alphabetical order by name
+    if (aIsOnline === bIsOnline) {
+      return a.fullName.localeCompare(b.fullName);
+    }
+    
+    // Online users come first (return -1 to put 'a' before 'b')
+    return bIsOnline - aIsOnline;
+  });
 
   useEffect(()=>{
     getUsers()
@@ -40,12 +72,19 @@ function SideBar() {
             >
               <p
                 onClick={() => navigate("/profile")}
-                className="cursor-pointer text-sm"
+                className="cursor-pointer text-sm hover:text-violet-400"
               >
                 Edit Profile
               </p>
               <hr className="my-2 border-t border-gray-500" />
-              <p onClick={()=>logout()} className="cursor-pointer text-sm">Logout</p>
+              <p
+                onClick={handleRegenerateKeys}
+                className="cursor-pointer text-sm hover:text-violet-400"
+              >
+                Fix Keys
+              </p>
+              <hr className="my-2 border-t border-gray-500" />
+              <p onClick={()=>logout()} className="cursor-pointer text-sm hover:text-red-400">Logout</p>
             </div>
           </div>
         </div>
@@ -62,23 +101,33 @@ function SideBar() {
         </div>
       </div>
       <div className="flex flex-col">
-        {filterUsers.map((user, index) => (
+        {sortedUsers.map((user, index) => (
           <div
           onClick={() => {
             setSelectedUser(user);
             setUnseenMessages(prev => ({ ...prev, [user._id]: 0 }));
           }}
-            key={index}
-            className={`relative flex items-center gap-2 p-2 pl-4 rounded cursor-pointer 
-      max-sm:text-sm ${selectedUser?._id === user._id && "bg-[#282142]/50"}`}
+            key={user._id}
+            className={`relative flex items-center gap-3 p-3 rounded-lg cursor-pointer 
+      max-sm:text-sm transition-all duration-200 hover:bg-[#282142]/30 ${
+        selectedUser?._id === user._id 
+          ? "bg-[#282142]/70 border-l-2 border-violet-500" 
+          : ""
+      }`}
           >
-            <img
-              src={user?.profilePic || assets.avatar_icon}
-              alt={user.fullName}
-              className="w-[35px] aspect-[1/1] rounded-full"
-            />
+            <div className="relative">
+              <img
+                src={user?.profilePic || assets.avatar_icon}
+                alt={user.fullName}
+                className="w-[35px] aspect-[1/1] rounded-full"
+              />
+              {/* Online indicator dot */}
+              {onlineUser.includes(user._id) && (
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#8185B2]"></div>
+              )}
+            </div>
             <div className="flex flex-col leading-5">
-              <p>{user.fullName}</p>
+              <p className="font-medium">{user.fullName}</p>
               {onlineUser.includes(user._id) ? (
                 <span className="text-green-400 text-xs">Online</span>
               ) : (
@@ -87,14 +136,14 @@ function SideBar() {
             </div>
 
 
-            {unseenMessages[user._id]>0 && (
-              <p
-                className="absolute top-4 right-4 text-xs h-5 w-5 
+            {unseenMessages[user._id] > 0 && (
+              <div
+                className="absolute top-2 right-2 text-xs h-5 min-w-[20px] px-1
           flex justify-center items-center rounded-full 
-          bg-violet-500/50"
+          bg-violet-500 text-white font-medium shadow-lg"
               >
                 {unseenMessages[user._id]}
-              </p>
+              </div>
             )}
           </div>
         ))}

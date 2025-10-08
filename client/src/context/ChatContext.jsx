@@ -63,15 +63,27 @@ export const ChatProvider = ({ children }) => {
       const { data } = await axios.get(`/api/messages/${userId}`);
       if (data.success) {
         const privateKey = localStorage.getItem("privateKey");
-        if (!privateKey) throw new Error("Private key missing in localStorage");
+        
+        if (!privateKey) {
+          console.warn("Private key missing - cannot decrypt messages");
+          toast.error("Encryption keys missing. Please refresh the page or contact support.");
+          setMessages(data.messages.map(msg => ({
+            ...msg,
+            text: msg.text ? "[Encrypted - Keys Missing]" : msg.text
+          })));
+          return;
+        }
 
         const decryptedMessages = await Promise.all(
           data.messages.map(async (msg) => {
-            if (msg.text && msg.senderId !== authUser?._id) {
+            if (msg.text) {
               try {
-                msg.text = await decryptMessage(msg.text, privateKey);
+                // Decrypt message with appropriate key based on sender
+                const isCurrentUser = msg.senderId === authUser?._id;
+                msg.text = await decryptMessage(msg.text, privateKey, isCurrentUser);
               } catch (err) {
-                console.error("Decryption failed", err);
+                console.error("Decryption failed for message:", err);
+                msg.text = "[Decryption Failed]";
               }
             }
             return msg;
@@ -80,19 +92,28 @@ export const ChatProvider = ({ children }) => {
         setMessages(decryptedMessages);
       }
     } catch (error) {
-      toast.error(error.message);
+      console.error("Get messages error:", error);
+      toast.error("Failed to load messages");
     }
   };
 
   // ------------------- SEND MESSAGE -------------------
   const sendMessage = async (messageData) => {
     if (!selectedUser) return;
+    
+    const privateKey = localStorage.getItem("privateKey");
+    if (!privateKey) {
+      toast.error("Encryption keys missing. Please refresh the page.");
+      return;
+    }
+    
     if (!selectedUser.publicKey) {
-      toast.error("Recipient has no public key.");
+      toast.error("Recipient has no public key for encryption.");
       return;
     }
 
     try {
+      // Encrypt message for both sender and recipient
       const encryptedText = await encryptMessage(
         messageData.text,
         selectedUser.publicKey
@@ -104,13 +125,15 @@ export const ChatProvider = ({ children }) => {
       );
 
       if (data.success) {
+        // For real-time update, show the original text (it will be properly encrypted in DB)
         setMessages((prev) => [
           ...prev,
-          { ...data.newMessage, text: messageData.text }, // show plaintext locally
+          { ...data.newMessage, text: messageData.text }
         ]);
       } else toast.error(data.message);
     } catch (error) {
-      toast.error(error.message);
+      console.error("Send message error:", error);
+      toast.error("Failed to send message");
     }
   };
 
@@ -122,11 +145,13 @@ export const ChatProvider = ({ children }) => {
       if (!authUser) return;
 
       const privateKey = localStorage.getItem("privateKey");
-      if (newMessage.senderId !== authUser._id && newMessage.text && privateKey) {
+      if (newMessage.text && privateKey) {
         try {
-          newMessage.text = await decryptMessage(newMessage.text, privateKey);
+          const isCurrentUser = newMessage.senderId === authUser._id;
+          newMessage.text = await decryptMessage(newMessage.text, privateKey, isCurrentUser);
         } catch (err) {
           console.error("Decryption failed", err);
+          newMessage.text = "[Decryption Failed]";
         }
       }
 

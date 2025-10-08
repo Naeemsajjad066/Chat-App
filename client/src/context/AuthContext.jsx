@@ -21,10 +21,40 @@ export const AuthProvider = ({ children }) => {
       const { data } = await axios.get("/api/auth/check");
       if (data.success) {
         setAuthUser(data.user);
+        await ensureKeysExist(data.user);
         connectSocket(data.user);
       }
     } catch (error) {
       toast.error(error.message);
+    }
+  };
+
+  // ----------------- ENSURE KEYS EXIST -----------------
+  const ensureKeysExist = async (user) => {
+    const privateKey = localStorage.getItem("privateKey");
+    const publicKey = localStorage.getItem("publicKey");
+
+    // If no private key in localStorage, generate new keypair
+    if (!privateKey) {
+      try {
+        console.log("No private key found, generating new keypair...");
+        const { publicKey: newPublicKey, privateKey: newPrivateKey } = await generateKeyPair();
+        
+        localStorage.setItem("privateKey", newPrivateKey);
+        localStorage.setItem("publicKey", newPublicKey);
+
+        // Update user's public key on server if it's different
+        if (user.publicKey !== newPublicKey) {
+          await axios.put("/api/auth/update-profile", { publicKey: newPublicKey });
+          console.log("Updated public key on server");
+        }
+      } catch (error) {
+        console.error("Failed to generate keypair:", error);
+        toast.error("Failed to setup encryption keys");
+      }
+    } else if (!publicKey) {
+      // If private key exists but no public key in localStorage, store it
+      localStorage.setItem("publicKey", user.publicKey || "");
     }
   };
 
@@ -39,18 +69,10 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("token", data.token);
       axios.defaults.headers.common["token"] = data.token;
 
+      // Ensure encryption keys exist for the user
+      await ensureKeysExist(data.userData);
+      
       connectSocket(data.userData);
-
-      // ✅ Generate keypair only if missing
-      if (!localStorage.getItem("privateKey") && !data.userData.publicKey) {
-        const { publicKey, privateKey } = await generateKeyPair();
-        localStorage.setItem("privateKey", privateKey);
-
-        // Send publicKey to backend
-        await axios.put("/api/auth/update-profile", { publicKey });
-        console.log("Generated NEW keypair");
-      }
-
       toast.success(data.message);
     } catch (error) {
       toast.error(error.message);
@@ -60,7 +82,9 @@ export const AuthProvider = ({ children }) => {
   // ----------------- LOGOUT -----------------
   const logout = async () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("privateKey");
+    // Don't remove private key on logout - user might want to keep their encryption keys
+    // localStorage.removeItem("privateKey");
+    // localStorage.removeItem("publicKey");
     setToken(null);
     setAuthUser(null);
     setOnlineUser([]);
@@ -79,6 +103,32 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       toast.error(error.message);
+    }
+  };
+
+  // ----------------- DELETE PROFILE -----------------
+  const deleteProfile = async () => {
+    try {
+      const { data } = await axios.delete("/api/auth/delete-profile");
+      if (data.success) {
+        // Clear all user data
+        localStorage.removeItem("token");
+        localStorage.removeItem("privateKey");
+        localStorage.removeItem("publicKey");
+        setToken(null);
+        setAuthUser(null);
+        setOnlineUser([]);
+        axios.defaults.headers.common["token"] = null;
+        socket?.disconnect();
+        toast.success("Profile deleted successfully");
+        return true;
+      } else {
+        toast.error(data.message);
+        return false;
+      }
+    } catch (error) {
+      toast.error(error.message);
+      return false;
     }
   };
 
@@ -108,6 +158,8 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateProfile,
+    deleteProfile,
+    ensureKeysExist,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

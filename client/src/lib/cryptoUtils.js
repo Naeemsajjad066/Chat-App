@@ -88,9 +88,11 @@ async function importAESKey(base64) {
   );
 }
 
-// ---------- Encrypt message (Hybrid RSA + AES-GCM) ----------
+// ---------- Encrypt message for both sender and receiver ----------
 export async function encryptMessage(message, recipientPublicKeyBase64) {
   const recipientKey = await importPublicKey(recipientPublicKeyBase64);
+  const senderPublicKey = localStorage.getItem("publicKey");
+  const senderKey = await importPublicKey(senderPublicKey);
 
   // 1️⃣ Generate AES session key
   const aesKey = await generateAESKey();
@@ -103,41 +105,75 @@ export async function encryptMessage(message, recipientPublicKeyBase64) {
     new TextEncoder().encode(message)
   );
 
-  // 3️⃣ Encrypt AES key with recipient's RSA public key
+  // 3️⃣ Encrypt AES key for both recipient and sender
   const exportedAES = await exportAESKey(aesKey);
-  const encryptedAES = await crypto.subtle.encrypt(
+  
+  const encryptedAESForRecipient = await crypto.subtle.encrypt(
     { name: "RSA-OAEP" },
     recipientKey,
     new TextEncoder().encode(exportedAES)
   );
 
+  const encryptedAESForSender = await crypto.subtle.encrypt(
+    { name: "RSA-OAEP" },
+    senderKey,
+    new TextEncoder().encode(exportedAES)
+  );
+
   return JSON.stringify({
-    aes: arrayBufferToBase64(encryptedAES),
+    recipientAES: arrayBufferToBase64(encryptedAESForRecipient),
+    senderAES: arrayBufferToBase64(encryptedAESForSender),
     iv: arrayBufferToBase64(iv),
     ciphertext: arrayBufferToBase64(encryptedMessage),
   });
 }
 
 // ---------- Decrypt message (Hybrid RSA + AES-GCM) ----------
-export async function decryptMessage(encryptedPayloadJSON, privateKeyBase64) {
+export async function decryptMessage(encryptedPayloadJSON, privateKeyBase64, isCurrentUser = false) {
   const privateKey = await importPrivateKey(privateKeyBase64);
-  const { aes, iv, ciphertext } = JSON.parse(encryptedPayloadJSON);
+  
+  try {
+    const payload = JSON.parse(encryptedPayloadJSON);
+    
+    // Handle old format (backward compatibility)
+    if (payload.aes) {
+      const { aes, iv, ciphertext } = payload;
+      const decryptedAES = await crypto.subtle.decrypt(
+        { name: "RSA-OAEP" },
+        privateKey,
+        base64ToArrayBuffer(aes)
+      );
+      const aesKey = await importAESKey(new TextDecoder().decode(decryptedAES));
+      const decryptedMessage = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: base64ToArrayBuffer(iv) },
+        aesKey,
+        base64ToArrayBuffer(ciphertext)
+      );
+      return new TextDecoder().decode(decryptedMessage);
+    }
+    
+    // Handle new dual encryption format
+    const { recipientAES, senderAES, iv, ciphertext } = payload;
+    const aesToUse = isCurrentUser ? senderAES : recipientAES;
+    
+    // 1️⃣ Decrypt AES key
+    const decryptedAES = await crypto.subtle.decrypt(
+      { name: "RSA-OAEP" },
+      privateKey,
+      base64ToArrayBuffer(aesToUse)
+    );
 
-  // 1️⃣ Decrypt AES key
-  const decryptedAES = await crypto.subtle.decrypt(
-    { name: "RSA-OAEP" },
-    privateKey,
-    base64ToArrayBuffer(aes)
-  );
+    const aesKey = await importAESKey(new TextDecoder().decode(decryptedAES));
 
-  const aesKey = await importAESKey(new TextDecoder().decode(decryptedAES));
+    // 2️⃣ Decrypt message
+    const decryptedMessage = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64ToArrayBuffer(iv) },
+      aesKey,
+      base64ToArrayBuffer(ciphertext)
+    );
 
-  // 2️⃣ Decrypt message
-  const decryptedMessage = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToArrayBuffer(iv) },
-    aesKey,
-    base64ToArrayBuffer(ciphertext)
-  );
-
-  return new TextDecoder().decode(decryptedMessage);
+    return new TextDecoder().decode(decryptedMessage);
+  } catch (error) {
+    throw new Error("Decryption failed: " + error.message);
+  }
 }

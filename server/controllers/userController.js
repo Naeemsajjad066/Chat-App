@@ -69,23 +69,41 @@ export const checkAuth=(req,res)=>{
 
 export const updateProfile=async(req,res)=>{
     try {
-        const {profilePic,bio,fullName}=req.body;
+        const {profilePic,bio,fullName,publicKey}=req.body;
 
         const userId=req.user._id;
-        let updatedUser;
-        if(!profilePic){
-            updatedUser=await User.findByIdAndUpdate(userId,{bio,fullName},{new:true});
-        }else{
+        let updateData = {bio,fullName};
+        
+        if(publicKey) updateData.publicKey = publicKey;
+        
+        if(profilePic){
             const upload=await cloudinary.uploader.upload(profilePic);
-            updatedUser=await User.findByIdAndUpdate(userId,{profilePic:upload.secure_url,bio,fullName},{new:true})
+            updateData.profilePic = upload.secure_url;
         }
+
+        const updatedUser=await User.findByIdAndUpdate(userId, updateData, {new:true});
 
         res.json({success:true, user:updatedUser})
     } catch (error) {
         console.log(error.message);
-
         res.json({success:false,message:error.message})
+    }
+}
+
+// Delete User Profile
+export const deleteProfile = async(req,res) => {
+    try {
+        const userId = req.user._id;
         
+        // Delete user from database
+        await User.findByIdAndDelete(userId);
         
+        // You might also want to delete associated messages, but that depends on your business logic
+        // await Message.deleteMany({ $or: [{ senderId: userId }, { receiverId: userId }] });
+        
+        res.json({success: true, message: "Profile deleted successfully"});
+    } catch (error) {
+        console.log(error.message);
+        res.json({success: false, message: error.message});
     }
 }
