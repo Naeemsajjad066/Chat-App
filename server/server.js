@@ -32,7 +32,7 @@ io.on("connection",(socket)=>{
   }
 
   console.log(`✅ User connected: ${userId} (Socket: ${socket.id})`);
-  console.log(`📊 UserId type: ${typeof userId}, length: ${userId.length}`);
+
   
   // Store the socket mapping
   userSocketMap[userId] = socket.id;
@@ -40,7 +40,7 @@ io.on("connection",(socket)=>{
   // Emit updated online users list to all clients
   const onlineUserIds = Object.keys(userSocketMap);
   console.log(`📡 Broadcasting online users: [${onlineUserIds.length}] ${onlineUserIds.join(', ')}`);
-  console.log(`📡 Online user IDs types:`, onlineUserIds.map(id => `${id} (${typeof id})`));
+
   io.emit("getOnlineUsers", onlineUserIds);
 
   socket.on("disconnect",(reason)=>{

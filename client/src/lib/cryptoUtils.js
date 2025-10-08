@@ -89,10 +89,19 @@ async function importAESKey(base64) {
 }
 
 // ---------- Encrypt message for both sender and receiver ----------
-export async function encryptMessage(message, recipientPublicKeyBase64) {
+export async function encryptMessage(message, recipientPublicKeyBase64, senderPublicKeyBase64 = null) {
   const recipientKey = await importPublicKey(recipientPublicKeyBase64);
-  const senderPublicKey = localStorage.getItem("publicKey");
+  
+  // Use provided sender public key or fall back to localStorage
+  const senderPublicKey = senderPublicKeyBase64 || localStorage.getItem("publicKey");
+  
+  if (!senderPublicKey) {
+    throw new Error("Sender public key not available");
+  }
+  
   const senderKey = await importPublicKey(senderPublicKey);
+  
+  
 
   // 1️⃣ Generate AES session key
   const aesKey = await generateAESKey();
@@ -120,12 +129,15 @@ export async function encryptMessage(message, recipientPublicKeyBase64) {
     new TextEncoder().encode(exportedAES)
   );
 
-  return JSON.stringify({
+  const result = JSON.stringify({
     recipientAES: arrayBufferToBase64(encryptedAESForRecipient),
     senderAES: arrayBufferToBase64(encryptedAESForSender),
     iv: arrayBufferToBase64(iv),
     ciphertext: arrayBufferToBase64(encryptedMessage),
   });
+  
+  
+  return result;
 }
 
 // ---------- Decrypt message (Hybrid RSA + AES-GCM) ----------
@@ -137,6 +149,7 @@ export async function decryptMessage(encryptedPayloadJSON, privateKeyBase64, isC
     
     // Handle old format (backward compatibility)
     if (payload.aes) {
+      console.log("🔄 Using legacy decryption format");
       const { aes, iv, ciphertext } = payload;
       const decryptedAES = await crypto.subtle.decrypt(
         { name: "RSA-OAEP" },
@@ -154,7 +167,13 @@ export async function decryptMessage(encryptedPayloadJSON, privateKeyBase64, isC
     
     // Handle new dual encryption format
     const { recipientAES, senderAES, iv, ciphertext } = payload;
+    
+    if (!recipientAES || !senderAES || !iv || !ciphertext) {
+      throw new Error("Invalid encryption payload - missing required fields");
+    }
+    
     const aesToUse = isCurrentUser ? senderAES : recipientAES;
+    console.log(`🔑 Using ${isCurrentUser ? 'sender' : 'recipient'} AES key for decryption`);
     
     // 1️⃣ Decrypt AES key
     const decryptedAES = await crypto.subtle.decrypt(
@@ -172,8 +191,17 @@ export async function decryptMessage(encryptedPayloadJSON, privateKeyBase64, isC
       base64ToArrayBuffer(ciphertext)
     );
 
-    return new TextDecoder().decode(decryptedMessage);
+    const result = new TextDecoder().decode(decryptedMessage);
+    console.log(`✅ Successfully decrypted message: "${result.substring(0, 20)}..."`);
+    return result;
   } catch (error) {
-    throw new Error("Decryption failed: " + error.message);
+    console.error("🔴 Decryption error details:", {
+      errorName: error.name,
+      errorMessage: error.message,
+      isCurrentUser,
+      payloadKeys: Object.keys(JSON.parse(encryptedPayloadJSON || '{}'))
+    });
+    
+    throw new Error(`Decryption failed: ${error.message}`);
   }
 }
