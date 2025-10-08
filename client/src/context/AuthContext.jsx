@@ -17,15 +17,22 @@ export const AuthProvider = ({ children }) => {
 
   // ----------------- CHECK AUTH -----------------
   const checkAuth = async () => {
+    if (!token) return; // Don't check auth if no token
+    
     try {
       const { data } = await axios.get("/api/auth/check");
       if (data.success) {
         setAuthUser(data.user);
         await ensureKeysExist(data.user);
-        connectSocket(data.user);
+        
+        // Only connect socket if not already connected
+        if (!socket || !socket.connected) {
+          connectSocket(data.user);
+        }
       }
     } catch (error) {
-      toast.error(error.message);
+      console.error("Auth check failed:", error);
+      // Don't show toast for auth failures as they're common on startup
     }
   };
 
@@ -33,6 +40,30 @@ export const AuthProvider = ({ children }) => {
   const ensureKeysExist = async (user) => {
     const privateKey = localStorage.getItem("privateKey");
     const publicKey = localStorage.getItem("publicKey");
+
+    // Check if user has public key on server
+    if (!user.publicKey || user.publicKey.trim() === "") {
+      console.log("User has no public key on server, generating new keypair...");
+      try {
+        const { publicKey: newPublicKey, privateKey: newPrivateKey } = await generateKeyPair();
+        
+        localStorage.setItem("privateKey", newPrivateKey);
+        localStorage.setItem("publicKey", newPublicKey);
+
+        // Update user's public key on server
+        await axios.put("/api/auth/update-profile", { publicKey: newPublicKey });
+        
+        // Update local authUser state
+        setAuthUser(prev => ({ ...prev, publicKey: newPublicKey }));
+        
+        console.log("Generated and uploaded new public key to server");
+        toast.success("Encryption keys setup completed");
+      } catch (error) {
+        console.error("Failed to generate keypair:", error);
+        toast.error("Failed to setup encryption keys. Please try refreshing the page.");
+      }
+      return;
+    }
 
     // If no private key in localStorage, generate new keypair
     if (!privateKey) {
@@ -46,6 +77,7 @@ export const AuthProvider = ({ children }) => {
         // Update user's public key on server if it's different
         if (user.publicKey !== newPublicKey) {
           await axios.put("/api/auth/update-profile", { publicKey: newPublicKey });
+          setAuthUser(prev => ({ ...prev, publicKey: newPublicKey }));
           console.log("Updated public key on server");
         }
       } catch (error) {
@@ -134,20 +166,49 @@ export const AuthProvider = ({ children }) => {
 
   // ----------------- SOCKET -----------------
   const connectSocket = (userData) => {
-    if (!userData || (socket && socket.connected)) return;
+    if (!userData) return;
+    
+    // Disconnect existing socket if any
+    if (socket) {
+      socket.disconnect();
+      setSocket(null);
+    }
 
+    console.log("Connecting socket for user:", userData._id);
+    
     const newSocket = io(backendUrl, {
       query: { userId: userData._id },
+      transports: ['websocket', 'polling'], // Ensure compatibility
+    });
+
+    newSocket.on("connect", () => {
+      console.log("Socket connected:", newSocket.id);
+    });
+
+    newSocket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+    });
+
+    newSocket.on("getOnlineUsers", (userIds) => {
+      console.log("📱 Online users received:", userIds);
+      console.log("📱 Current authUser ID:", userData._id);
+      setOnlineUser(userIds);
     });
 
     setSocket(newSocket);
-
-    newSocket.on("getOnlineUsers", (userIds) => setOnlineUser(userIds));
   };
 
   useEffect(() => {
     if (token) axios.defaults.headers.common["token"] = token;
     checkAuth();
+    
+    // Cleanup function to disconnect socket when component unmounts
+    return () => {
+      if (socket) {
+        console.log("Cleaning up socket connection");
+        socket.disconnect();
+      }
+    };
   }, []);
 
   const value = {

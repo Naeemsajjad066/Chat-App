@@ -3,13 +3,14 @@ import assets from "../assets/assets";
 import { useNavigate } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { ChatContext } from "../context/ChatContext";
+import { generateKeyPair } from "../lib/cryptoUtils";
 import toast from "react-hot-toast";
 
 function SideBar() {
 
   const{getUsers,users,selectedUser,setSelectedUser,unseenMessages,setUnseenMessages}=useContext(ChatContext)
   const [input,setInput]=useState("")
-  const {logout,onlineUser,ensureKeysExist,authUser}=useContext(AuthContext)
+  const {logout,onlineUser,ensureKeysExist,authUser,updateProfile}=useContext(AuthContext)
   const navigate = useNavigate();
 
   const handleRegenerateKeys = async () => {
@@ -18,9 +19,25 @@ function SideBar() {
     );
     if (confirm && authUser) {
       try {
-        await ensureKeysExist(authUser);
+        // Force regeneration of keys
+        localStorage.removeItem("privateKey");
+        localStorage.removeItem("publicKey");
+        
+        // Generate new keypair
+        const { publicKey: newPublicKey, privateKey: newPrivateKey } = await generateKeyPair();
+        
+        localStorage.setItem("privateKey", newPrivateKey);
+        localStorage.setItem("publicKey", newPublicKey);
+
+        // Update server with new public key
+        await updateProfile({ publicKey: newPublicKey });
+        
         toast.success("Encryption keys regenerated successfully!");
+        
+        // Refresh users to get updated keys
+        getUsers();
       } catch (error) {
+        console.error("Failed to regenerate keys:", error);
         toast.error("Failed to regenerate keys");
       }
     }
@@ -34,8 +51,10 @@ function SideBar() {
 
   // Sort users: online users first, then offline users
   const sortedUsers = searchFilteredUsers.sort((a, b) => {
-    const aIsOnline = onlineUser.includes(a._id);
-    const bIsOnline = onlineUser.includes(b._id);
+    // Ensure we're comparing strings
+    const aIsOnline = onlineUser.includes(String(a._id));
+    const bIsOnline = onlineUser.includes(String(b._id));
+    
     
     // If both have same online status, maintain alphabetical order by name
     if (aIsOnline === bIsOnline) {
@@ -122,16 +141,28 @@ function SideBar() {
                 className="w-[35px] aspect-[1/1] rounded-full"
               />
               {/* Online indicator dot */}
-              {onlineUser.includes(user._id) && (
+              {onlineUser.includes(String(user._id)) && (
                 <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-[#8185B2]"></div>
+              )}
+              {/* Encryption indicator */}
+              {(!user.publicKey || user.publicKey.trim() === "") && (
+                <div 
+                  className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-yellow-500 rounded-full border-2 border-[#8185B2]" 
+                  title="User needs to setup encryption keys"
+                ></div>
               )}
             </div>
             <div className="flex flex-col leading-5">
               <p className="font-medium">{user.fullName}</p>
-              {onlineUser.includes(user._id) ? (
+              {onlineUser.includes(String(user._id)) ? (
                 <span className="text-green-400 text-xs">Online</span>
               ) : (
                 <span className="text-neutral-400 text-xs">Offline</span>
+              )}
+
+              {/* Show encryption status */}
+              {(!user.publicKey || user.publicKey.trim() === "") && (
+                <span className="text-yellow-400 text-xs">⚠ No encryption</span>
               )}
             </div>
 

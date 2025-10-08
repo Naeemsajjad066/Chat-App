@@ -48,6 +48,7 @@ export const ChatProvider = ({ children }) => {
     try {
       const { data } = await axios.get("/api/messages/user");
       if (data.success) {
+
         setUsers(data.users);
         setUnseenMessages(data.unseenMessages);
       }
@@ -103,12 +104,14 @@ export const ChatProvider = ({ children }) => {
     
     const privateKey = localStorage.getItem("privateKey");
     if (!privateKey) {
-      toast.error("Encryption keys missing. Please refresh the page.");
+      toast.error("Encryption keys missing. Please refresh the page or go to profile settings.");
       return;
     }
     
-    if (!selectedUser.publicKey) {
-      toast.error("Recipient has no public key for encryption.");
+    if (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") {
+      toast.error("Recipient has no public key for encryption. They need to log in again or update their profile to generate encryption keys.", {
+        duration: 6000,
+      });
       return;
     }
 

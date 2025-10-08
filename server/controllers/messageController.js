@@ -11,6 +11,10 @@ export const getUsersForSidebar = async (req, res) => {
       "-password"
     );
 
+    console.log(`👥 Fetching users for: ${userId} (type: ${typeof userId})`);
+    console.log(`👥 Found ${filteredUsers.length} users:`, 
+      filteredUsers.map(u => `${u._id} (${typeof u._id})`));
+
     const unseenMessages = {};
     const promises = filteredUsers.map(async (user) => {
       const messages = await Message.find({

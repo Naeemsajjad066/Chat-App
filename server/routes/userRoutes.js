@@ -1,5 +1,5 @@
 import express from "express";
-import { checkAuth, login, Signup, updateProfile, deleteProfile } from "../controllers/userController.js";
+import { checkAuth, login, Signup, updateProfile, deleteProfile, checkEncryptionSetup } from "../controllers/userController.js";
 import { protectRoute } from "../controllers/auth.js";
 
 
@@ -11,6 +11,7 @@ userRouter.post("/login",login)
 userRouter.put("/update-profile",protectRoute,updateProfile)
 userRouter.delete("/delete-profile",protectRoute,deleteProfile)
 userRouter.get("/check",protectRoute,checkAuth)
+userRouter.get("/check-encryption",protectRoute,checkEncryptionSetup)
 
 
 export default userRouter;

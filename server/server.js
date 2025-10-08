@@ -23,18 +23,35 @@ export const userSocketMap={}//{userid:socketId}
 
 //socket.io connection handler function
 io.on("connection",(socket)=>{
-  const userId=socket.handshake.query.userId
-  console.log("User connected",userId);
-  if(userId) userSocketMap[userId]=socket.id;
+  const userId=socket.handshake.query.userId;
+  
+  if (!userId || userId === "undefined") {
+    console.log("⚠️ Socket connection without valid userId");
+    socket.disconnect();
+    return;
+  }
 
-  //emit online users to all connected clients
-  io.emit("getOnlineUsers",Object.keys(userSocketMap));
+  console.log(`✅ User connected: ${userId} (Socket: ${socket.id})`);
+  console.log(`📊 UserId type: ${typeof userId}, length: ${userId.length}`);
+  
+  // Store the socket mapping
+  userSocketMap[userId] = socket.id;
 
-  socket.on("disconnect",()=>{
-    console.log("User Disconnected",userId);
+  // Emit updated online users list to all clients
+  const onlineUserIds = Object.keys(userSocketMap);
+  console.log(`📡 Broadcasting online users: [${onlineUserIds.length}] ${onlineUserIds.join(', ')}`);
+  console.log(`📡 Online user IDs types:`, onlineUserIds.map(id => `${id} (${typeof id})`));
+  io.emit("getOnlineUsers", onlineUserIds);
+
+  socket.on("disconnect",(reason)=>{
+    console.log(`❌ User disconnected: ${userId} (Reason: ${reason})`);
     delete userSocketMap[userId];
-    io.emit("getOnlineUsers",Object.keys(userSocketMap))
-  })
+    
+    // Emit updated online users list
+    const remainingUsers = Object.keys(userSocketMap);
+    console.log(`📡 Broadcasting remaining users: [${remainingUsers.length}] ${remainingUsers.join(', ')}`);
+    io.emit("getOnlineUsers", remainingUsers);
+  });
 })
 
 // middleware setup

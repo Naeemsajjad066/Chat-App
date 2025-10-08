@@ -63,7 +63,7 @@ function ChatContainer() {
         />
         <p className="flex-1 text-lg text-white flex items-center gap-2">
           {selectedUser?.fullName}
-          {onlineUser.includes(selectedUser._id) ? (
+          {onlineUser.includes(String(selectedUser._id)) ? (
             <span className="w-2 h-2 rounded-full bg-green-500"></span>
             
           ) : (
@@ -85,6 +85,19 @@ function ChatContainer() {
 
       {/* Chat Messages */}
       <div className="flex flex-col h-[calc(100%-120px)] overflow-y-scroll p-3 pb-6">
+        {/* Encryption Warning */}
+        {(!selectedUser.publicKey || selectedUser.publicKey.trim() === "") && (
+          <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
+            <p className="text-yellow-200 text-sm flex items-center gap-2">
+              <span>⚠️</span>
+              <span>
+                <strong>{selectedUser.fullName}</strong> doesn't have encryption keys set up. 
+                They need to log in again or update their profile to receive encrypted messages.
+              </span>
+            </p>
+          </div>
+        )}
+        
         {messages.map((msg, index) => {
           const isSender = msg.senderId === authUser._id;
           return (
@@ -141,8 +154,17 @@ function ChatContainer() {
               e.key === "Enter" ? handleSendMessage(e) : null
             }
             type="text"
-            placeholder="Send message"
-            className="flex-1 text-sm p-3 border-none rounded-lg outline-none text-white placeholder-gray-400 bg-transparent"
+            placeholder={
+              (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
+                ? "Cannot send encrypted messages - user needs to setup keys"
+                : "Send message"
+            }
+            disabled={!selectedUser.publicKey || selectedUser.publicKey.trim() === ""}
+            className={`flex-1 text-sm p-3 border-none rounded-lg outline-none text-white placeholder-gray-400 bg-transparent ${
+              (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
+                ? "cursor-not-allowed opacity-50" 
+                : ""
+            }`}
           />
           <input
             onChange={handleSendingImage}
@@ -150,20 +172,29 @@ function ChatContainer() {
             id="image"
             accept="image/png, image/jpeg"
             hidden
+            disabled={!selectedUser.publicKey || selectedUser.publicKey.trim() === ""}
           />
           <label htmlFor="image">
             <img
               src={assets.gallery_icon}
               alt=""
-              className="w-5 mr-2 cursor-pointer"
+              className={`w-5 mr-2 ${
+                (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
+                  ? "cursor-not-allowed opacity-50" 
+                  : "cursor-pointer"
+              }`}
             />
           </label>
         </div>
         <img
-          onClick={handleSendMessage}
+          onClick={(!selectedUser.publicKey || selectedUser.publicKey.trim() === "") ? null : handleSendMessage}
           src={assets.send_button}
           alt=""
-          className="w-6 cursor-pointer"
+          className={`w-6 ${
+            (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
+              ? "cursor-not-allowed opacity-50" 
+              : "cursor-pointer"
+          }`}
         />
       </div>
     </div>

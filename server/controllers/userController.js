@@ -11,6 +11,14 @@ export const Signup = async (req, res) => {
             return res.json({ success: false, message: "Missing required fields" });
         }
 
+        // Validate that publicKey is provided for proper encryption setup
+        if (!publicKey || publicKey.trim() === "") {
+            return res.json({ 
+                success: false, 
+                message: "Encryption keys must be generated. Please try signing up again." 
+            });
+        }
+
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.json({ success: false, message: "User already exists" });
@@ -24,7 +32,7 @@ export const Signup = async (req, res) => {
             email,
             password: hashedPassword,
             bio,
-            publicKey
+            publicKey: publicKey.trim() // Ensure no extra whitespace
         });
 
         const token = generateToken(newUser._id);
@@ -74,7 +82,10 @@ export const updateProfile=async(req,res)=>{
         const userId=req.user._id;
         let updateData = {bio,fullName};
         
-        if(publicKey) updateData.publicKey = publicKey;
+        // Only update publicKey if it's provided and not empty
+        if(publicKey && publicKey.trim() !== "") {
+            updateData.publicKey = publicKey.trim();
+        }
         
         if(profilePic){
             const upload=await cloudinary.uploader.upload(profilePic);
@@ -102,6 +113,24 @@ export const deleteProfile = async(req,res) => {
         // await Message.deleteMany({ $or: [{ senderId: userId }, { receiverId: userId }] });
         
         res.json({success: true, message: "Profile deleted successfully"});
+    } catch (error) {
+        console.log(error.message);
+        res.json({success: false, message: error.message});
+    }
+}
+
+// Check if user has valid encryption setup
+export const checkEncryptionSetup = async(req, res) => {
+    try {
+        const user = req.user;
+        
+        const hasValidKeys = user.publicKey && user.publicKey.trim() !== "";
+        
+        res.json({
+            success: true, 
+            hasValidKeys,
+            message: hasValidKeys ? "Encryption setup is valid" : "Encryption keys missing"
+        });
     } catch (error) {
         console.log(error.message);
         res.json({success: false, message: error.message});

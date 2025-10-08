@@ -22,7 +22,7 @@ function RightSideBar() {
         <div className='flex flex-col pt-16 items-center justify-between text-xs font-light mx-auto'>
             <img src={selectedUser?.profilePic || assets.avatar_icon} alt="" className='w-20 aspect-[1/1] rounded-full' />
             <h1 className='px-10 text-xl font-medium mx-auto flex items-center gap-2'>
-                {onlineUser.includes(selectedUser._id) && <p className='w-2 h-2 rounded-full bg-green-500'>
+                {onlineUser.includes(String(selectedUser._id)) && <p className='w-2 h-2 rounded-full bg-green-500'>
                     </p> }
                     {selectedUser.fullName}</h1>
                 <p className='px-10 mx-auto'>

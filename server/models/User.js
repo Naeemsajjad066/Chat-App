@@ -6,7 +6,14 @@ const userSchema = new mongoose.Schema({
     password: { type: String, required: true, minlength: 6 },
     profilePic: { type: String, default: "" },
     bio: { type: String, default: "" },
-    publicKey: { type: String, default: "" }, // consistent naming
+    publicKey: { 
+        type: String, 
+        default: "",
+        required: function() {
+            // Public key is required for encryption but can be empty for legacy users
+            return false;
+        }
+    },
 }, {
     timestamps: true
 });

@@ -42,15 +42,18 @@ function LoginPage() {
 
     let publicKey = null;
 
-    // Step 2: Generate keypair only once if signing up
-    if (currState === "Sign up" && !localStorage.getItem("privateKey")) {
+    // Step 2: Generate keypair for signup (always generate new keys for signup)
+    if (currState === "Sign up") {
       try {
+        toast.loading("Generating encryption keys...", { id: "keyGen" });
         const keyPair = await generateKeyPair();
         localStorage.setItem("privateKey", keyPair.privateKey);
         publicKey = keyPair.publicKey;
+        toast.success("Encryption keys generated successfully", { id: "keyGen" });
         console.log("Generated new keypair for signup");
       } catch (err) {
         console.error("Key generation failed", err);
+        toast.error("Failed to generate encryption keys. Please try again.", { id: "keyGen" });
         return;
       }
     }
