@@ -12,6 +12,7 @@ function LoginPage() {
   const [bio, setBio] = useState("");
   const [isDataSubmitted, setIsDataSubmitted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const { login } = useContext(AuthContext);
 
@@ -45,27 +46,31 @@ function LoginPage() {
     // Step 2: Generate keypair for signup (always generate new keys for signup)
     if (currState === "Sign up") {
       try {
-        toast.loading("Generating encryption keys...", { id: "keyGen" });
+        setIsLoading(true);
         const keyPair = await generateKeyPair();
         localStorage.setItem("privateKey", keyPair.privateKey);
         publicKey = keyPair.publicKey;
-        toast.success("Encryption keys generated successfully", { id: "keyGen" });
         console.log("Generated new keypair for signup");
       } catch (err) {
         console.error("Key generation failed", err);
-        toast.error("Failed to generate encryption keys. Please try again.", { id: "keyGen" });
+        toast.error("Failed to generate encryption keys. Please try again.");
+        setIsLoading(false);
         return;
       }
+    } else {
+      setIsLoading(true);
     }
 
     // Step 3: Call login/signup function
-    login(currState === "Sign up" ? "signup" : "login", {
+    await login(currState === "Sign up" ? "signup" : "login", {
       fullName,
       email,
       password,
       bio,
       ...(currState === "Sign up" ? { publicKey } : {}),
     });
+    
+    setIsLoading(false);
   };
 
   return (
@@ -158,9 +163,16 @@ function LoginPage() {
 
         <button
           type="submit"
-          className="py-3 bg-gradient-to-r from-purple-400 to-violet-600 text-white rounded-md cursor-pointer"
+          disabled={isLoading}
+          className="py-3 bg-gradient-to-r from-purple-400 to-violet-600 text-white rounded-md cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {currState === "Sign up" ? "Create Account" : "Login Now"}
+          {isLoading && (
+            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+          )}
+          {isLoading ? "Processing..." : (currState === "Sign up" ? "Create Account" : "Login Now")}
         </button>
 
         <div className="flex gap-2 items-center text-sm text-gray-500">

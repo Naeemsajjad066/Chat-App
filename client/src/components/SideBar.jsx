@@ -96,13 +96,6 @@ function SideBar() {
                 Edit Profile
               </p>
               <hr className="my-2 border-t border-gray-500" />
-              <p
-                onClick={handleRegenerateKeys}
-                className="cursor-pointer text-sm hover:text-violet-400"
-              >
-                Fix Keys
-              </p>
-              <hr className="my-2 border-t border-gray-500" />
               <p onClick={()=>logout()} className="cursor-pointer text-sm hover:text-red-400">Logout</p>
             </div>
           </div>
