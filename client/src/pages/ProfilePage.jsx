@@ -98,7 +98,6 @@ function ProfilePage() {
                     <ul className='mb-6 text-sm text-gray-600 list-disc list-inside'>
                         <li>Your account and profile information</li>
                         <li>All your messages and chat history</li>
-                        <li>Your encryption keys</li>
                         <li>Any uploaded profile pictures</li>
                     </ul>
                     <div className='flex gap-4 justify-end'>

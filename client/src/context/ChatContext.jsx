@@ -1,14 +1,17 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { AuthContext } from "./AuthContext";
 import toast from "react-hot-toast";
-import { encryptMessage, decryptMessage } from "../lib/cryptoUtils";
 
 export const ChatContext = createContext();
 
 export const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [users, setUsers] = useState([]);
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUser, setSelectedUser] = useState(() => {
+    // Initialize from localStorage if available
+    const savedUserId = localStorage.getItem("selectedUserId");
+    return savedUserId ? { _id: savedUserId } : null;
+  });
   const [unseenMessages, setUnseenMessages] = useState({});
   const { socket, axios, authUser } = useContext(AuthContext);
 
@@ -51,6 +54,15 @@ export const ChatProvider = ({ children }) => {
 
         setUsers(data.users);
         setUnseenMessages(data.unseenMessages);
+        
+        // Restore selected user from localStorage if exists
+        const savedUserId = localStorage.getItem("selectedUserId");
+        if (savedUserId && data.users.length > 0) {
+          const savedUser = data.users.find(user => user._id === savedUserId);
+          if (savedUser) {
+            setSelectedUser(savedUser);
+          }
+        }
       }
     } catch (error) {
       toast.error(error.message);
@@ -63,49 +75,7 @@ export const ChatProvider = ({ children }) => {
     try {
       const { data } = await axios.get(`/api/messages/${userId}`);
       if (data.success) {
-        const privateKey = localStorage.getItem("privateKey");
-        
-        if (!privateKey) {
-          console.warn("Private key missing - cannot decrypt messages");
-          toast.error("Encryption keys missing. Please refresh the page or contact support.");
-          setMessages(data.messages.map(msg => ({
-            ...msg,
-            text: msg.text ? "[Encrypted - Keys Missing]" : msg.text
-          })));
-          return;
-        }
-
-        const decryptedMessages = await Promise.all(
-          data.messages.map(async (msg) => {
-            if (msg.text) {
-              try {
-                // Decrypt message with appropriate key based on sender
-                const isCurrentUser = String(msg.senderId) === String(authUser?._id);
-
-                
-                // Try to decrypt with the correct key
-                try {
-                  msg.text = await decryptMessage(msg.text, privateKey, isCurrentUser);
-                } catch (firstAttempt) {
-                  console.warn("🔄 First decryption attempt failed, trying alternative...");
-                  // Try with opposite key as fallback
-                  msg.text = await decryptMessage(msg.text, privateKey, !isCurrentUser);
-                }
-              } catch (err) {
-                console.error("❌ Decryption failed for message:", {
-                  messageId: msg._id,
-                  senderId: msg.senderId,
-                  currentUserId: authUser?._id,
-                  isCurrentUser: String(msg.senderId) === String(authUser?._id),
-                  error: err.message
-                });
-                msg.text = "[Decryption Failed]";
-              }
-            }
-            return msg;
-          })
-        );
-        setMessages(decryptedMessages);
+        setMessages(data.messages);
       }
     } catch (error) {
       console.error("Get messages error:", error);
@@ -113,67 +83,20 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // ------------------- VERIFY KEY SYNC -------------------
-  const verifyKeySync = async () => {
-    if (!authUser) return false;
-    
-    const localPublicKey = localStorage.getItem("publicKey");
-    if (localPublicKey !== authUser.publicKey) {
-      console.warn("🔑 Key mismatch detected - syncing keys");
-      localStorage.setItem("publicKey", authUser.publicKey || "");
-      return false;
-    }
-    return true;
-  };
-
   // ------------------- SEND MESSAGE -------------------
   const sendMessage = async (messageData) => {
     if (!selectedUser) return;
-    
-    // Verify key synchronization
-    await verifyKeySync();
-    
-    const privateKey = localStorage.getItem("privateKey");
-    if (!privateKey) {
-      toast.error("Encryption keys missing. Please refresh the page or go to profile settings.");
-      return;
-    }
-    
-    if (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") {
-      toast.error("Recipient has no public key for encryption. They need to log in again or update their profile to generate encryption keys.", {
-        duration: 6000,
-      });
-      return;
-    }
 
     try {
-      // Get current user's public key
-      const senderPublicKey = authUser?.publicKey || localStorage.getItem("publicKey");
-      
-      if (!senderPublicKey) {
-        toast.error("Your public key is missing. Please refresh the page or update your profile.");
-        return;
-      }
-      
-
-      
-      // Encrypt message for both sender and recipient
-      const encryptedText = await encryptMessage(
-        messageData.text,
-        selectedUser.publicKey,
-        senderPublicKey
-      );
-
       const { data } = await axios.post(
         `/api/messages/send/${selectedUser._id}`,
-        { ...messageData, text: encryptedText }
+        messageData
       );
 
       if (data.success) {
-        // For real-time update, show the original text (it will be properly encrypted in DB)
         setMessages((prev) => [
           ...prev,
-          { ...data.newMessage, text: messageData.text }
+          data.newMessage
         ]);
       } else toast.error(data.message);
     } catch (error) {
@@ -188,32 +111,6 @@ export const ChatProvider = ({ children }) => {
 
     socket.on("newMessage", async (newMessage) => {
       if (!authUser) return;
-
-      const privateKey = localStorage.getItem("privateKey");
-      if (newMessage.text && privateKey) {
-        try {
-          const isCurrentUser = String(newMessage.senderId) === String(authUser._id);
-
-          
-          // Try to decrypt with the correct key
-          try {
-            newMessage.text = await decryptMessage(newMessage.text, privateKey, isCurrentUser);
-          } catch (firstAttempt) {
-            console.warn("🔄 Real-time decryption failed, trying alternative...");
-            // Try with opposite key as fallback
-            newMessage.text = await decryptMessage(newMessage.text, privateKey, !isCurrentUser);
-          }
-        } catch (err) {
-          console.error("❌ Real-time decryption failed:", {
-            messageId: newMessage._id,
-            senderId: newMessage.senderId,
-            currentUserId: authUser._id,
-            isCurrentUser: String(newMessage.senderId) === String(authUser._id),
-            error: err.message
-          });
-          newMessage.text = "[Decryption Failed]";
-        }
-      }
 
       if (selectedUser && newMessage.senderId === selectedUser._id) {
         newMessage.seen = true;
@@ -249,6 +146,15 @@ export const ChatProvider = ({ children }) => {
     return () => unsubscribeFromMessages();
   }, [socket, selectedUser, authUser]);
 
+  // Save selected user to localStorage whenever it changes
+  useEffect(() => {
+    if (selectedUser) {
+      localStorage.setItem("selectedUserId", selectedUser._id);
+    } else {
+      localStorage.removeItem("selectedUserId");
+    }
+  }, [selectedUser]);
+
   const value = {
     messages,
     users,
@@ -261,7 +167,6 @@ export const ChatProvider = ({ children }) => {
     unseenMessages,
     setUnseenMessages,
     deleteMessages,
-    verifyKeySync,
   };
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

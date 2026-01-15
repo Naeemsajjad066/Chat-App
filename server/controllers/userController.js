@@ -4,19 +4,11 @@ import bcrypt from "bcryptjs"
 import cloudinary from "../lib/cloudinary.js"
 
 export const Signup = async (req, res) => {
-    const { fullName, email, password, bio = "", publicKey = "" } = req.body;
+    const { fullName, email, password, bio = "" } = req.body;
 
     try {
         if (!fullName || !email || !password) {
             return res.json({ success: false, message: "Missing required fields" });
-        }
-
-        // Validate that publicKey is provided for proper encryption setup
-        if (!publicKey || publicKey.trim() === "") {
-            return res.json({ 
-                success: false, 
-                message: "Encryption keys must be generated. Please try signing up again." 
-            });
         }
 
         const existingUser = await User.findOne({ email });
@@ -31,8 +23,7 @@ export const Signup = async (req, res) => {
             fullName,
             email,
             password: hashedPassword,
-            bio,
-            publicKey: publicKey.trim() // Ensure no extra whitespace
+            bio
         });
 
         const token = generateToken(newUser._id);
@@ -77,15 +68,10 @@ export const checkAuth=(req,res)=>{
 
 export const updateProfile=async(req,res)=>{
     try {
-        const {profilePic,bio,fullName,publicKey}=req.body;
+        const {profilePic,bio,fullName}=req.body;
 
         const userId=req.user._id;
         let updateData = {bio,fullName};
-        
-        // Only update publicKey if it's provided and not empty
-        if(publicKey && publicKey.trim() !== "") {
-            updateData.publicKey = publicKey.trim();
-        }
         
         if(profilePic){
             const upload=await cloudinary.uploader.upload(profilePic);
@@ -113,24 +99,6 @@ export const deleteProfile = async(req,res) => {
         // await Message.deleteMany({ $or: [{ senderId: userId }, { receiverId: userId }] });
         
         res.json({success: true, message: "Profile deleted successfully"});
-    } catch (error) {
-        console.log(error.message);
-        res.json({success: false, message: error.message});
-    }
-}
-
-// Check if user has valid encryption setup
-export const checkEncryptionSetup = async(req, res) => {
-    try {
-        const user = req.user;
-        
-        const hasValidKeys = user.publicKey && user.publicKey.trim() !== "";
-        
-        res.json({
-            success: true, 
-            hasValidKeys,
-            message: hasValidKeys ? "Encryption setup is valid" : "Encryption keys missing"
-        });
     } catch (error) {
         console.log(error.message);
         res.json({success: false, message: error.message});

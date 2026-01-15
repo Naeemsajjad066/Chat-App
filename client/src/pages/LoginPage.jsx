@@ -1,7 +1,6 @@
 import React, { useContext, useState } from "react";
 import assets from "../assets/assets";
 import { AuthContext } from "../context/AuthContext";
-import { generateKeyPair } from "../lib/cryptoUtils";
 import toast from "react-hot-toast";
 
 function LoginPage() {
@@ -41,33 +40,14 @@ function LoginPage() {
       return;
     }
 
-    let publicKey = null;
+    setIsLoading(true);
 
-    // Step 2: Generate keypair for signup (always generate new keys for signup)
-    if (currState === "Sign up") {
-      try {
-        setIsLoading(true);
-        const keyPair = await generateKeyPair();
-        localStorage.setItem("privateKey", keyPair.privateKey);
-        publicKey = keyPair.publicKey;
-        console.log("Generated new keypair for signup");
-      } catch (err) {
-        console.error("Key generation failed", err);
-        toast.error("Failed to generate encryption keys. Please try again.");
-        setIsLoading(false);
-        return;
-      }
-    } else {
-      setIsLoading(true);
-    }
-
-    // Step 3: Call login/signup function
+    // Call login/signup function
     await login(currState === "Sign up" ? "signup" : "login", {
       fullName,
       email,
       password,
       bio,
-      ...(currState === "Sign up" ? { publicKey } : {}),
     });
     
     setIsLoading(false);

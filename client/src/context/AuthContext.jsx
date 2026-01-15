@@ -2,7 +2,6 @@ import { createContext, useEffect, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
-import { generateKeyPair } from "../lib/cryptoUtils";
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
 axios.defaults.baseURL = backendUrl;
@@ -23,7 +22,6 @@ export const AuthProvider = ({ children }) => {
       const { data } = await axios.get("/api/auth/check");
       if (data.success) {
         setAuthUser(data.user);
-        await ensureKeysExist(data.user);
         
         // Only connect socket if not already connected
         if (!socket || !socket.connected) {
@@ -33,60 +31,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error("Auth check failed:", error);
       // Don't show toast for auth failures as they're common on startup
-    }
-  };
-
-  // ----------------- ENSURE KEYS EXIST -----------------
-  const ensureKeysExist = async (user) => {
-    const privateKey = localStorage.getItem("privateKey");
-    const publicKey = localStorage.getItem("publicKey");
-
-    // Check if user has public key on server
-    if (!user.publicKey || user.publicKey.trim() === "") {
-      console.log("User has no public key on server, generating new keypair...");
-      try {
-        const { publicKey: newPublicKey, privateKey: newPrivateKey } = await generateKeyPair();
-        
-        localStorage.setItem("privateKey", newPrivateKey);
-        localStorage.setItem("publicKey", newPublicKey);
-
-        // Update user's public key on server
-        await axios.put("/api/auth/update-profile", { publicKey: newPublicKey });
-        
-        // Update local authUser state
-        setAuthUser(prev => ({ ...prev, publicKey: newPublicKey }));
-        
-        console.log("Generated and uploaded new public key to server");
-        toast.success("Encryption keys setup completed");
-      } catch (error) {
-        console.error("Failed to generate keypair:", error);
-        toast.error("Failed to setup encryption keys. Please try refreshing the page.");
-      }
-      return;
-    }
-
-    // If no private key in localStorage, generate new keypair
-    if (!privateKey) {
-      try {
-        console.log("No private key found, generating new keypair...");
-        const { publicKey: newPublicKey, privateKey: newPrivateKey } = await generateKeyPair();
-        
-        localStorage.setItem("privateKey", newPrivateKey);
-        localStorage.setItem("publicKey", newPublicKey);
-
-        // Update user's public key on server if it's different
-        if (user.publicKey !== newPublicKey) {
-          await axios.put("/api/auth/update-profile", { publicKey: newPublicKey });
-          setAuthUser(prev => ({ ...prev, publicKey: newPublicKey }));
-          console.log("Updated public key on server");
-        }
-      } catch (error) {
-        console.error("Failed to generate keypair:", error);
-        toast.error("Failed to setup encryption keys");
-      }
-    } else if (!publicKey) {
-      // If private key exists but no public key in localStorage, store it
-      localStorage.setItem("publicKey", user.publicKey || "");
     }
   };
 
@@ -100,9 +44,6 @@ export const AuthProvider = ({ children }) => {
       setToken(data.token);
       localStorage.setItem("token", data.token);
       axios.defaults.headers.common["token"] = data.token;
-
-      // Ensure encryption keys exist for the user
-      await ensureKeysExist(data.userData);
       
       connectSocket(data.userData);
       toast.success(data.message);
@@ -114,9 +55,6 @@ export const AuthProvider = ({ children }) => {
   // ----------------- LOGOUT -----------------
   const logout = async () => {
     localStorage.removeItem("token");
-    // Don't remove private key on logout - user might want to keep their encryption keys
-    // localStorage.removeItem("privateKey");
-    // localStorage.removeItem("publicKey");
     setToken(null);
     setAuthUser(null);
     setOnlineUser([]);
@@ -145,8 +83,6 @@ export const AuthProvider = ({ children }) => {
       if (data.success) {
         // Clear all user data
         localStorage.removeItem("token");
-        localStorage.removeItem("privateKey");
-        localStorage.removeItem("publicKey");
         setToken(null);
         setAuthUser(null);
         setOnlineUser([]);
@@ -220,7 +156,6 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateProfile,
     deleteProfile,
-    ensureKeysExist,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

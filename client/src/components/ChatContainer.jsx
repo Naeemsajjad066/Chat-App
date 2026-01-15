@@ -6,7 +6,7 @@ import { ChatContext } from "../context/ChatContext";
 import toast from "react-hot-toast";
 
 function ChatContainer() {
-  const { messages, setSlectedUser, selectedUser, sendMessage, getMessages } =
+  const { messages, setSelectedUser, selectedUser, sendMessage, getMessages } =
     useContext(ChatContext);
   const { authUser, onlineUser } = useContext(AuthContext);
 
@@ -71,7 +71,7 @@ function ChatContainer() {
           )}
         </p>
         <img
-          onClick={() => setSlectedUser(null)}
+          onClick={() => setSelectedUser(null)}
           src={assets.arrow_icon}
           alt=""
           className="md:hidden w-7 cursor-pointer"
@@ -85,18 +85,6 @@ function ChatContainer() {
 
       {/* Chat Messages */}
       <div className="flex flex-col h-[calc(100%-120px)] overflow-y-scroll p-3 pb-6">
-        {/* Encryption Warning */}
-        {(!selectedUser.publicKey || selectedUser.publicKey.trim() === "") && (
-          <div className="mb-4 p-3 bg-yellow-500/20 border border-yellow-500/50 rounded-lg">
-            <p className="text-yellow-200 text-sm flex items-center gap-2">
-              <span>⚠️</span>
-              <span>
-                <strong>{selectedUser.fullName}</strong> doesn't have encryption keys set up. 
-                They need to log in again or update their profile to receive encrypted messages.
-              </span>
-            </p>
-          </div>
-        )}
         
         {messages.map((msg, index) => {
           const isSender = msg.senderId === authUser._id;
@@ -154,17 +142,8 @@ function ChatContainer() {
               e.key === "Enter" ? handleSendMessage(e) : null
             }
             type="text"
-            placeholder={
-              (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
-                ? "Cannot send encrypted messages - user needs to setup keys"
-                : "Send message"
-            }
-            disabled={!selectedUser.publicKey || selectedUser.publicKey.trim() === ""}
-            className={`flex-1 text-sm p-3 border-none rounded-lg outline-none text-white placeholder-gray-400 bg-transparent ${
-              (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
-                ? "cursor-not-allowed opacity-50" 
-                : ""
-            }`}
+            placeholder="Send message"
+            className="flex-1 text-sm p-3 border-none rounded-lg outline-none text-white placeholder-gray-400 bg-transparent"
           />
           <input
             onChange={handleSendingImage}
@@ -172,35 +151,26 @@ function ChatContainer() {
             id="image"
             accept="image/png, image/jpeg"
             hidden
-            disabled={!selectedUser.publicKey || selectedUser.publicKey.trim() === ""}
           />
           <label htmlFor="image">
             <img
               src={assets.gallery_icon}
               alt=""
-              className={`w-5 mr-2 ${
-                (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
-                  ? "cursor-not-allowed opacity-50" 
-                  : "cursor-pointer"
-              }`}
+              className="w-5 mr-2 cursor-pointer"
             />
           </label>
         </div>
         <img
-          onClick={(!selectedUser.publicKey || selectedUser.publicKey.trim() === "") ? null : handleSendMessage}
+          onClick={handleSendMessage}
           src={assets.send_button}
           alt=""
-          className={`w-6 ${
-            (!selectedUser.publicKey || selectedUser.publicKey.trim() === "") 
-              ? "cursor-not-allowed opacity-50" 
-              : "cursor-pointer"
-          }`}
+          className="w-6 cursor-pointer"
         />
       </div>
     </div>
   ) : (
-    // Empty Chat State
-    <div className="flex flex-col gap-5 items-center justify-center h-full">
+    // Empty Chat State - Hidden on mobile
+    <div className="hidden md:flex flex-col gap-5 items-center justify-center h-full">
       <img src={assets.logo_icon} alt="" className="w-20" />
       <p className="text-lg font-medium text-white">
         Chat anytime, anywhere
