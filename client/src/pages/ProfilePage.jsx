@@ -1,124 +1,218 @@
-import React, { useContext, useState, useEffect } from 'react'
-import assets from '../assets/assets'
-import { useNavigate } from 'react-router-dom'
-import { AuthContext } from '../context/AuthContext'
-import toast from 'react-hot-toast'
+import React, { useContext, useState } from "react";
+import assets from "../assets/assets";
+import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../context/AuthContext";
+import Avatar from "../components/ui/Avatar";
+import Button from "../components/ui/Button";
+import Modal from "../components/ui/Modal";
 
 function ProfilePage() {
+  const { authUser, updateProfile, deleteProfile } = useContext(AuthContext);
+  const navigate = useNavigate();
 
-    const {authUser,updateProfile,deleteProfile}=useContext(AuthContext)
-    const [selectedImg,setSelectedImg]=useState(null)
-    const [showDeleteConfirmation,setShowDeleteConfirmation]=useState(false)
-    const [isLoading, setIsLoading]=useState(false)
-    const navigate=useNavigate()
-    const [name,setName]=useState(authUser.fullName)
-    const [bio,setBio]=useState(authUser.bio)
+  const [selectedImg, setSelectedImg]         = useState(null);
+  const [name, setName]                       = useState(authUser.fullName);
+  const [bio, setBio]                         = useState(authUser.bio || "");
+  const [isSaving, setIsSaving]               = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  const previewSrc = selectedImg
+    ? URL.createObjectURL(selectedImg)
+    : authUser?.profilePic || assets.avatar_icon;
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
 
-
-    const handleSubmit=async(e)=>{
-        e.preventDefault()
-        setIsLoading(true)
-        if(!selectedImg){
-            await updateProfile({fullName:name,bio});
-            setIsLoading(false)
-            navigate('/')
-            return;
-        }else{
-            const reader=new FileReader();
-            reader.readAsDataURL(selectedImg)
-            reader.onload=async ()=>{
-                const base64Image=reader.result;
-                await updateProfile({profilePic:base64Image,fullName:name,bio})
-                setIsLoading(false)
-                navigate('/')
-                return;
-            }
-        }
+    if (!selectedImg) {
+      await updateProfile({ fullName: name, bio });
+    } else {
+      const reader = new FileReader();
+      reader.readAsDataURL(selectedImg);
+      await new Promise((resolve) => {
+        reader.onload = async () => {
+          await updateProfile({ profilePic: reader.result, fullName: name, bio });
+          resolve();
+        };
+      });
     }
 
-    const handleDeleteProfile = async () => {
-        const success = await deleteProfile();
-        if (success) {
-            navigate('/login');
-        }
-    }
+    setIsSaving(false);
+    navigate("/");
+  };
 
-    const confirmDelete = () => {
-        setShowDeleteConfirmation(true);
-    }
-
+  const handleDelete = async () => {
+    const ok = await deleteProfile();
+    if (ok) navigate("/login");
+  };
 
   return (
-    <div className='min-h-screen bg-cover bg-no-repeat flex items-center justify-center'>
-        <div className='w-5/6 max-w-2xl backdrop-blur-2xl text-gray-300 border-2 border-gray-600 flex items-center jutify-between max-sm:flex-col-reverse rounded-lg'>
-            <form onSubmit={handleSubmit} className='flex flex-col gap-5 p-10 flex-1' action="">
-                <h3 className='text-large'>Profile Details</h3>
-                <label htmlFor="avatar" className='flex items-center gap-3 cursor-pointer'>
-                    <input onChange={(e)=>setSelectedImg(e.target.files[0])} type="file" id='avatar' accept='.png, .jpg, .jpeg' hidden />
-                    <img src={selectedImg ? URL.createObjectURL(selectedImg):authUser?.profilePic || assets.avatar_icon } alt="" className={`w-12 h-12 ${selectedImg && "rounded-full"} ${authUser.profilePic && "rounded-full"}`}/>
-                    Upload Profile Image
-                </label>
-                <input onChange={(e)=>setName(e.target.value)} value={name} type="text" required placeholder='Your Name' className='p-2 border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500' />
-                <textarea onChange={(e)=>setBio(e.target.value)} value={bio} name="" id="" required placeholder='Write profile bio..' className='p-2 border border-gray-500 rounded-md focus:outline-none focus:ring-2 focus:ring-violet-500' rows={4}></textarea>
+    <div className="min-h-dvh w-full overflow-y-auto flex flex-col items-center
+      justify-start sm:justify-center px-4 py-8 sm:py-12">
 
-                <div className='flex flex-col gap-3'>
-                    <button disabled={isLoading} className='bg-gradient-to-r from-purple-400 to-violet-600 text-white p-2 rounded-full text-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2' type='submit'>
-                        {isLoading && (
-                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                        )}
-                        {isLoading ? 'Saving...' : 'Save Changes'}
-                    </button>
-                    
-                    <button 
-                        type='button'
-                        onClick={confirmDelete}
-                        className='bg-gradient-to-r from-red-500 to-red-600 text-white p-2 rounded-full text-lg cursor-pointer hover:from-red-600 hover:to-red-700 transition-all duration-200'
-                    >
-                        Delete Profile
-                    </button>
-                </div>
-            </form>
-            
-            <img className={`max-w-44 aspect-square rounded-full mx-10 max-sm:mt-10 ${selectedImg && "rounded-full"}`} src={authUser.profilePic || assets.logo_icon} alt="" />
+      <div className="w-full max-w-md bg-white/5 border border-white/10
+        rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden">
+
+        {/* Header */}
+        <div className="px-6 pt-6 pb-5 border-b border-white/8">
+          <button
+            onClick={() => navigate("/")}
+            className="flex items-center gap-2 text-gray-400 hover:text-white
+              active:text-gray-200 transition text-sm mb-5 -ml-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to chats
+          </button>
+          <h1 className="text-lg font-semibold text-white">Profile Settings</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Update your personal information</p>
         </div>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteConfirmation && (
-            <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'>
-                <div className='bg-white rounded-lg p-6 max-w-md mx-4 text-gray-800'>
-                    <h3 className='text-xl font-bold mb-4 text-red-600'>Delete Profile</h3>
-                    <p className='mb-6'>
-                        Are you sure you want to delete your profile? This action cannot be undone and will permanently remove:
-                    </p>
-                    <ul className='mb-6 text-sm text-gray-600 list-disc list-inside'>
-                        <li>Your account and profile information</li>
-                        <li>All your messages and chat history</li>
-                        <li>Any uploaded profile pictures</li>
-                    </ul>
-                    <div className='flex gap-4 justify-end'>
-                        <button 
-                            onClick={() => setShowDeleteConfirmation(false)}
-                            className='px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors'
-                        >
-                            Cancel
-                        </button>
-                        <button 
-                            onClick={handleDeleteProfile}
-                            className='px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors'
-                        >
-                            Delete Forever
-                        </button>
-                    </div>
-                </div>
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
+
+          {/* Avatar */}
+          <div className="flex items-center gap-4">
+            <div className="relative group flex-shrink-0">
+              <img
+                src={previewSrc}
+                alt="Profile"
+                className="w-20 h-20 rounded-full object-cover border-2 border-violet-500/30"
+              />
+              <label
+                htmlFor="avatar"
+                className="absolute inset-0 rounded-full bg-black/50 flex items-center
+                  justify-center cursor-pointer opacity-0 group-hover:opacity-100
+                  active:opacity-100 transition-opacity"
+                aria-label="Change profile photo"
+              >
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </label>
+              <input
+                onChange={(e) => setSelectedImg(e.target.files[0])}
+                type="file"
+                id="avatar"
+                accept=".png,.jpg,.jpeg,.webp"
+                hidden
+              />
             </div>
-        )}
+
+            <div className="min-w-0">
+              <p className="text-white font-medium truncate">{authUser.fullName}</p>
+              <p className="text-gray-500 text-sm truncate">{authUser.email}</p>
+              <label
+                htmlFor="avatar"
+                className="text-violet-400 text-xs mt-1 cursor-pointer
+                  hover:text-violet-300 active:text-violet-200 transition inline-block"
+              >
+                Change photo
+              </label>
+            </div>
+          </div>
+
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label htmlFor="profile-name" className="block text-xs font-medium text-gray-400">
+              Full Name
+            </label>
+            <input
+              id="profile-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              type="text"
+              required
+              placeholder="Your name"
+              className="w-full bg-white/5 border border-white/10 rounded-xl
+                px-4 py-3 text-base text-white placeholder-gray-600
+                outline-none focus:border-violet-500/60 focus:bg-white/8 transition"
+            />
+          </div>
+
+          {/* Bio */}
+          <div className="space-y-1.5">
+            <label htmlFor="profile-bio" className="block text-xs font-medium text-gray-400">
+              Bio
+            </label>
+            <textarea
+              id="profile-bio"
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              placeholder="Tell people a little about yourself…"
+              rows={3}
+              maxLength={160}
+              className="w-full bg-white/5 border border-white/10 rounded-xl
+                px-4 py-3 text-base text-white placeholder-gray-600
+                outline-none focus:border-violet-500/60 focus:bg-white/8
+                resize-none transition"
+            />
+            <p className="text-right text-[11px] text-gray-600">{bio.length}/160</p>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-3 pt-1">
+            <Button
+              type="submit"
+              loading={isSaving}
+              className="w-full py-3 text-base font-semibold"
+            >
+              Save Changes
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowDeleteModal(true)}
+              className="w-full py-3 text-base border-red-500/30 text-red-400 hover:bg-red-500/10"
+            >
+              Delete Account
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {/* Delete confirmation modal */}
+      <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-white font-semibold text-lg">Delete Account</h3>
+        </div>
+        <p className="text-gray-400 text-sm mb-3">
+          This is permanent and cannot be undone. The following will be deleted:
+        </p>
+        <ul className="text-sm text-gray-500 list-disc list-inside mb-6 space-y-1">
+          <li>Your profile and account</li>
+          <li>All messages and chat history</li>
+          <li>Your profile picture</li>
+        </ul>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteModal(false)}
+            className="flex-1 py-3"
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDelete}
+            className="flex-1 py-3 font-semibold"
+          >
+            Delete Forever
+          </Button>
+        </div>
+      </Modal>
     </div>
-  )
+  );
 }
 
-export default ProfilePage
+export default ProfilePage;

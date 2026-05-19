@@ -1,62 +1,78 @@
-import React, { useContext, useEffect, useState } from 'react'
-import assets, { imagesDummyData } from '../assets/assets'
-import { ChatContext } from '../context/ChatContext'
-import { AuthContext } from '../context/AuthContext'
+import React, { useContext, useEffect, useState } from "react";
+import { ChatContext } from "../context/ChatContext";
+import { AuthContext } from "../context/AuthContext";
+import Avatar from "./ui/Avatar";
+import Lightbox from "./ui/Lightbox";
 
 function RightSideBar() {
-     const {selectedUser,messages,deleteMessages}=useContext(ChatContext)
+  const { selectedUser, messages } = useContext(ChatContext);
+  const { onlineUser } = useContext(AuthContext);
 
-     const {logout,onlineUser}=useContext(AuthContext)
+  const [msgImages, setMsgImages] = useState([]);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
 
-     const [msgImages,setMsgImages]=useState([])
-    
-    // get all the images from messages and set them to state
-    useEffect(()=>{
-        setMsgImages(
-            messages.filter(msg=>msg.image).map(msg=>msg.image)
-        )
-    },[messages])
+  useEffect(() => {
+    setMsgImages(messages.filter((m) => m.image).map((m) => m.image));
+  }, [messages]);
 
-  return selectedUser && (
-    <div className={`bg-[#8185B2]/10 text-white w-full relative overflow-y-scroll ${selectedUser ? "max-md:hidden":""}`}>
-        <div className='flex flex-col pt-16 items-center justify-between text-xs font-light mx-auto'>
-            <img src={selectedUser?.profilePic || assets.avatar_icon} alt="" className='w-20 aspect-[1/1] rounded-full' />
-            <h1 className='px-10 text-xl font-medium mx-auto flex items-center gap-2'>
-                {onlineUser.includes(String(selectedUser._id)) && <p className='w-2 h-2 rounded-full bg-green-500'>
-                    </p> }
-                    {selectedUser.fullName}</h1>
-                <p className='px-10 mx-auto'>
-                    {selectedUser.bio}
-                </p>
+  if (!selectedUser) return null;
 
+  const isOnline = onlineUser.includes(String(selectedUser._id));
+
+  return (
+    <div className="hidden xl:flex flex-col h-full bg-[#0f0e1a]/80 border-l border-white/5 overflow-y-auto">
+
+      {/* Profile */}
+      <div className="flex flex-col items-center pt-10 pb-6 px-5 gap-3">
+        <Avatar
+          src={selectedUser?.profilePic}
+          alt={selectedUser.fullName}
+          size="w-20 h-20"
+          online={isOnline}
+          dotSize="w-3.5 h-3.5"
+          className="ring-2 ring-violet-500/30 rounded-full"
+        />
+        <div className="text-center">
+          <h2 className="text-base font-semibold text-white">{selectedUser.fullName}</h2>
+          <p className={`text-xs mt-0.5 ${isOnline ? "text-green-400" : "text-gray-500"}`}>
+            {isOnline ? "Online" : "Offline"}
+          </p>
         </div>
-        <div className='flex items-center justify-center mt-4 text-xs font-bold  '>
-            <button onClick={deleteMessages}  className='p-2 rounded-lg bg-blue-700 hover:bg-red-600 
-            cursor-pointer transition'>
-                Delete Messages
-            </button>
-            </div>
-        <hr className='border-[#ffffff50] my-4' />
-        <div className='px-5 text-xs'>
-            <p>Media</p>
-            <div className='mt-2 max-h-[200px] overflow-y-scroll grid grid-cols-2 gap-4 opacity-80'>
+        {selectedUser.bio && (
+          <p className="text-xs text-gray-400 text-center leading-relaxed px-2">{selectedUser.bio}</p>
+        )}
+      </div>
 
-                {msgImages.map((url,index)=>(
-                    <div key={index} onClick={()=>window.open(url)} className='cursor-pointer rounded'>
-                        <img src={url} alt="" className='h-full rounded-md'/>
-                    </div>
-                ))}
-            </div>
+      <hr className="border-white/8 mx-5" />
 
+      {/* Media */}
+      <div className="px-4 py-4 flex-1">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Shared Media</p>
+          <span className="text-xs text-gray-600">{msgImages.length}</span>
         </div>
 
-        <button onClick={()=>logout()} className='absolute bottom-5 left-1/2 transorm -translate-x-1/2 
-        bg-gradient-to-r from-purple-400 to-violet-600 text-white border-none
-        text-sm font-light py-2 px-20 rounded-full cursor-pointer'>
-            Logout
-        </button>
+        {msgImages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-gray-700 gap-2">
+            <svg className="w-7 h-7 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <p className="text-xs">No media yet</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {msgImages.map((url, i) => (
+              <button key={i} onClick={() => setLightboxSrc(url)} className="aspect-square rounded-lg overflow-hidden hover:opacity-80 active:opacity-70 transition">
+                <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
     </div>
-  )
+  );
 }
 
-export default RightSideBar
+export default RightSideBar;

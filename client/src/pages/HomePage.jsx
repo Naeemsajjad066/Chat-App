@@ -1,28 +1,37 @@
-import React, {useContext } from 'react'
-import SideBar from '../components/SideBar'
-import ChatContainer from '../components/ChatContainer'
-import RightSideBar from '../components/RightSideBar'
-import { ChatContext } from '../context/ChatContext'
-function HomePage() {
+import React, { useContext } from "react";
+import SideBar from "../components/SideBar";
+import ChatContainer from "../components/ChatContainer";
+import RightSideBar from "../components/RightSideBar";
+import { ChatContext } from "../context/ChatContext";
 
-const {selectedUser}=useContext(ChatContext)    
-    return (
-        <div className="border w-full h-screen sm:px-[15%] sm:py-[5%]">
-          <div
-            className={`backdrop-blur-xl border-2 border-gray-600 rounded-2xl 
-              overflow-hidden h-full grid grid-cols-1 relative ${
-                selectedUser
-                  ? 'md:grid-cols-[1fr_1.5fr_1fr] xl:grid-cols-[1fr_2fr_1fr]'
-                  : 'md:grid-cols-2'
-              }`}
-          >
-            <SideBar />
-            <ChatContainer />
-            <RightSideBar  />
-          </div>
-        </div>
-      );
-      
+function HomePage() {
+  const { selectedUser } = useContext(ChatContext);
+
+  return (
+    /*
+     * Mobile  : full-screen, no padding, no border-radius — feels native
+     * Tablet+ : floating card with padding and rounded corners
+     */
+    <div className="h-dvh w-full sm:px-[6%] sm:py-[3%] lg:px-[10%] lg:py-[4%]">
+      <div
+        className={`
+          h-full w-full
+          sm:rounded-2xl sm:border sm:border-gray-600/50 sm:overflow-hidden
+          backdrop-blur-xl
+          grid
+          ${selectedUser
+            ? "grid-cols-1 md:grid-cols-[260px_1fr] xl:grid-cols-[280px_1fr_240px]"
+            : "grid-cols-1 md:grid-cols-[260px_1fr]"
+          }
+        `}
+      >
+        <SideBar />
+        <ChatContainer />
+        {/* Right sidebar only on xl when a user is selected */}
+        {selectedUser && <RightSideBar />}
+      </div>
+    </div>
+  );
 }
 
-export default HomePage
+export default HomePage;

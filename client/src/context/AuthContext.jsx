@@ -1,162 +1,131 @@
-import { createContext, useEffect, useState } from "react";
-import axios from "axios";
+import { createContext, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { io } from "socket.io-client";
+import { authApi } from "../api/auth.api.js";
+import api from "../api/client.js";
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL;
-axios.defaults.baseURL = backendUrl;
+export const AuthContext = createContext(null);
 
-export const AuthContext = createContext();
+export function AuthProvider({ children }) {
+  const [authUser,       setAuthUser]       = useState(null);
+  const [onlineUser,     setOnlineUser]     = useState([]);
+  const [socket,         setSocket]         = useState(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
-export const AuthProvider = ({ children }) => {
-  const [token, setToken] = useState(localStorage.getItem("token"));
-  const [authUser, setAuthUser] = useState(null);
-  const [onlineUser, setOnlineUser] = useState([]);
-  const [socket, setSocket] = useState(null);
+  const socketRef = useRef(null);
 
-  // ----------------- CHECK AUTH -----------------
-  const checkAuth = async () => {
-    if (!token) return; // Don't check auth if no token
-    
-    try {
-      const { data } = await axios.get("/api/auth/check");
-      if (data.success) {
-        setAuthUser(data.user);
-        
-        // Only connect socket if not already connected
-        if (!socket || !socket.connected) {
-          connectSocket(data.user);
+  // ── Global 401 interceptor ────────────────────────────────────────────────
+  useEffect(() => {
+    const id = api.interceptors.response.use(
+      (res) => res,
+      (err) => {
+        if (err.response?.status === 401 && authUser) {
+          _clearSession();
+          toast.error("Session expired. Please log in again.");
         }
+        return Promise.reject(err);
       }
-    } catch (error) {
-      console.error("Auth check failed:", error);
-      // Don't show toast for auth failures as they're common on startup
-    }
-  };
+    );
+    return () => api.interceptors.response.eject(id);
+  }, [authUser]);
 
-  // ----------------- LOGIN / SIGNUP -----------------
-  const login = async (state, credentials) => {
-    try {
-      const { data } = await axios.post(`/api/auth/${state}`, credentials);
-      if (!data.success) return toast.error(data.message);
+  // ── Check auth on mount ───────────────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const token = localStorage.getItem("token");
+      if (!token) { setIsCheckingAuth(false); return; }
+      try {
+        const { data } = await authApi.checkAuth();
+        if (data.success) {
+          setAuthUser(data.user);
+          _connectSocket(data.user);
+        } else {
+          _clearSession();
+        }
+      } catch {
+        _clearSession();
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    })();
+    return () => socketRef.current?.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-      setAuthUser(data.userData);
-      setToken(data.token);
-      localStorage.setItem("token", data.token);
-      axios.defaults.headers.common["token"] = data.token;
-      
-      connectSocket(data.userData);
-      toast.success(data.message);
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
-
-  // ----------------- LOGOUT -----------------
-  const logout = async () => {
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function _clearSession(showToast = false) {
     localStorage.removeItem("token");
-    setToken(null);
     setAuthUser(null);
     setOnlineUser([]);
-    axios.defaults.headers.common["token"] = null;
-    socket?.disconnect();
-    toast.success("Logged out successfully");
-  };
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    setSocket(null);
+    if (showToast) toast.success("Logged out successfully.");
+  }
 
-  // ----------------- UPDATE PROFILE -----------------
-  const updateProfile = async (body) => {
-    try {
-      const { data } = await axios.put("/api/auth/update-profile", body);
-      if (data.success) {
-        setAuthUser(data.user);
-        toast.success("Profile updated successfully");
-      }
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
+  function _connectSocket(user) {
+    if (!user?._id) return;
+    socketRef.current?.disconnect();
 
-  // ----------------- DELETE PROFILE -----------------
-  const deleteProfile = async () => {
+    const s = io(import.meta.env.VITE_BACKEND_URL, {
+      query: { userId: user._id },
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+    });
+
+    s.on("getOnlineUsers", setOnlineUser);
+    socketRef.current = s;
+    setSocket(s);
+  }
+
+  // ── Public API ────────────────────────────────────────────────────────────
+  const login = async (state, credentials) => {
     try {
-      const { data } = await axios.delete("/api/auth/delete-profile");
-      if (data.success) {
-        // Clear all user data
-        localStorage.removeItem("token");
-        setToken(null);
-        setAuthUser(null);
-        setOnlineUser([]);
-        axios.defaults.headers.common["token"] = null;
-        socket?.disconnect();
-        toast.success("Profile deleted successfully");
-        return true;
-      } else {
-        toast.error(data.message);
-        return false;
-      }
-    } catch (error) {
-      toast.error(error.message);
+      const { data } = await authApi[state](credentials);
+      if (!data.success) { toast.error(data.message); return false; }
+      localStorage.setItem("token", data.token);
+      setAuthUser(data.userData);
+      _connectSocket(data.userData);
+      toast.success(data.message);
+      return true;
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Network error.");
       return false;
     }
   };
 
-  // ----------------- SOCKET -----------------
-  const connectSocket = (userData) => {
-    if (!userData) return;
-    
-    // Disconnect existing socket if any
-    if (socket) {
-      socket.disconnect();
-      setSocket(null);
+  const logout = () => _clearSession(true);
+
+  const updateProfile = async (body) => {
+    try {
+      const { data } = await authApi.updateProfile(body);
+      if (data.success) { setAuthUser(data.user); toast.success("Profile updated."); return true; }
+      toast.error(data.message);
+      return false;
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update profile.");
+      return false;
     }
-
-    console.log("Connecting socket for user:", userData._id);
-    
-    const newSocket = io(backendUrl, {
-      query: { userId: userData._id },
-      transports: ['websocket', 'polling'], // Ensure compatibility
-    });
-
-    newSocket.on("connect", () => {
-      console.log("Socket connected:", newSocket.id);
-    });
-
-    newSocket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason);
-    });
-
-    newSocket.on("getOnlineUsers", (userIds) => {
-      console.log("📱 Online users received:", userIds);
-      console.log("📱 Current authUser ID:", userData._id);
-      setOnlineUser(userIds);
-    });
-
-    setSocket(newSocket);
   };
 
-  useEffect(() => {
-    if (token) axios.defaults.headers.common["token"] = token;
-    checkAuth();
-    
-    // Cleanup function to disconnect socket when component unmounts
-    return () => {
-      if (socket) {
-        console.log("Cleaning up socket connection");
-        socket.disconnect();
-      }
-    };
-  }, []);
-
-  const value = {
-    axios,
-    authUser,
-    onlineUser,
-    socket,
-    login,
-    logout,
-    updateProfile,
-    deleteProfile,
+  const deleteProfile = async () => {
+    try {
+      const { data } = await authApi.deleteProfile();
+      if (data.success) { _clearSession(); toast.success("Account deleted."); return true; }
+      toast.error(data.message);
+      return false;
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to delete account.");
+      return false;
+    }
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return (
+    <AuthContext.Provider value={{
+      authUser, onlineUser, socket, isCheckingAuth,
+      login, logout, updateProfile, deleteProfile,
+    }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}

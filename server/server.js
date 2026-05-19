@@ -1,79 +1,89 @@
-import express from "express";
 import "dotenv/config";
-import cors from "cors";
+import express from "express";
 import http from "http";
-import { connectDB } from "./lib/db.js";
-import userRouter from "./routes/userRoutes.js";
-import messageRouter from "./routes/messageRoutes.js";
+import cors from "cors";
+import helmet from "helmet";
+import compression from "compression";
+import morgan from "morgan";
 import { Server } from "socket.io";
 
+import { connectDB } from "./config/db.js";
+import userRouter from "./routes/userRoutes.js";
+import messageRouter from "./routes/messageRoutes.js";
+import { errorHandler } from "./middleware/errorHandler.js";
 
-
-const app = express();
+// ── App & HTTP server ─────────────────────────────────────────────────────────
+const app    = express();
 const server = http.createServer(app);
 
-//Initiliazie socket.io server
-export const io=new Server(server,{
-  cors:{origin:"*"}
-})
+// ── Socket.IO ─────────────────────────────────────────────────────────────────
+export const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || "*",
+    methods: ["GET", "POST"],
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000,
+});
 
-//store online users
+/** userId → socketId map (in-memory; swap for Redis adapter in multi-instance) */
+export const userSocketMap = {};
 
-export const userSocketMap={}//{userid:socketId}
+io.on("connection", (socket) => {
+  const userId = socket.handshake.query.userId;
 
-//socket.io connection handler function
-io.on("connection",(socket)=>{
-  const userId=socket.handshake.query.userId;
-  
   if (!userId || userId === "undefined") {
-    console.log("⚠️ Socket connection without valid userId");
     socket.disconnect();
     return;
   }
 
-  console.log(`✅ User connected: ${userId} (Socket: ${socket.id})`);
-
-  
-  // Store the socket mapping
   userSocketMap[userId] = socket.id;
+  io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-  // Emit updated online users list to all clients
-  const onlineUserIds = Object.keys(userSocketMap);
-  console.log(`📡 Broadcasting online users: [${onlineUserIds.length}] ${onlineUserIds.join(', ')}`);
-
-  io.emit("getOnlineUsers", onlineUserIds);
-
-  socket.on("disconnect",(reason)=>{
-    console.log(`❌ User disconnected: ${userId} (Reason: ${reason})`);
-    delete userSocketMap[userId];
-    
-    // Emit updated online users list
-    const remainingUsers = Object.keys(userSocketMap);
-    console.log(`📡 Broadcasting remaining users: [${remainingUsers.length}] ${remainingUsers.join(', ')}`);
-    io.emit("getOnlineUsers", remainingUsers);
+  // Typing indicators
+  socket.on("typing", ({ toUserId }) => {
+    const sid = userSocketMap[toUserId];
+    if (sid) io.to(sid).emit("userTyping", { fromUserId: userId });
   });
-})
 
-// middleware setup
+  socket.on("stopTyping", ({ toUserId }) => {
+    const sid = userSocketMap[toUserId];
+    if (sid) io.to(sid).emit("userStopTyping", { fromUserId: userId });
+  });
+
+  socket.on("disconnect", () => {
+    delete userSocketMap[userId];
+    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  });
+});
+
+// ── Global middleware ─────────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // allow Cloudinary images
+}));
+app.use(compression());
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(cors({ origin: process.env.CLIENT_URL || "*" }));
 app.use(express.json({ limit: "4mb" }));
-app.use(cors());
 
-// test route
-app.use("/api/status", (req, res) => res.send("Server is live"));
+// ── Routes ────────────────────────────────────────────────────────────────────
+app.get("/api/status", (_req, res) => res.json({ status: "ok", ts: Date.now() }));
+app.use("/api/auth",     userRouter);
+app.use("/api/messages", messageRouter);
 
-app.use("/api/auth",userRouter)
-app.use("/api/messages",messageRouter)
+// ── 404 handler ───────────────────────────────────────────────────────────────
+app.use((_req, res) => res.status(404).json({ success: false, message: "Route not found." }));
 
+// ── Central error handler (must be last) ──────────────────────────────────────
+app.use(errorHandler);
+
+// ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
-// connect to mongodb
 await connectDB();
 
-// start server only after DB is connected
-if(process.env.NODE_ENV !=="production"){
-  server.listen(PORT, () => {
-    console.log("✅ Server is running on port: " + PORT);
-  });
+if (process.env.NODE_ENV !== "production") {
+  server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 }
-//export server for vercel
+
 export default server;

@@ -1,4 +1,4 @@
-import cloudinary from "../lib/cloudinary.js";
+import cloudinary from "../config/cloudinary.js";
 import Message from "../models/message.js";
 import User from "../models/User.js";
 import { io, userSocketMap } from "../server.js";
@@ -11,23 +11,41 @@ export const getUsersForSidebar = async (req, res) => {
       "-password"
     );
 
-
-
     const unseenMessages = {};
+    const lastMessages = {};
+
     const promises = filteredUsers.map(async (user) => {
-      const messages = await Message.find({
+      // Count unseen messages from this user
+      const unseenCount = await Message.countDocuments({
         senderId: user._id,
         receiverId: userId,
         seen: false,
       });
-      if (messages.length > 0) {
-        unseenMessages[user._id] = messages.length;
+      if (unseenCount > 0) {
+        unseenMessages[user._id] = unseenCount;
+      }
+
+      // Get the last message in the conversation
+      const lastMsg = await Message.findOne({
+        $or: [
+          { senderId: userId, receiverId: user._id },
+          { senderId: user._id, receiverId: userId },
+        ],
+      }).sort({ createdAt: -1 });
+
+      if (lastMsg) {
+        lastMessages[user._id] = {
+          text: lastMsg.text || null,
+          image: lastMsg.image ? true : false,
+          createdAt: lastMsg.createdAt,
+          senderId: lastMsg.senderId,
+        };
       }
     });
 
     await Promise.all(promises);
 
-    res.json({ success: true, users: filteredUsers, unseenMessages });
+    res.json({ success: true, users: filteredUsers, unseenMessages, lastMessages });
   } catch (error) {
     console.log(error.message);
     res.json({ success: false, message: error.message });
@@ -149,11 +167,26 @@ export const sendMessage = async (req, res) => {
     const receiverSocketId = userSocketMap[receiverId];
     const senderSocketId = userSocketMap[senderId];
 
+    const lastMsgPayload = {
+      text: newMessage.text || null,
+      image: newMessage.image ? true : false,
+      createdAt: newMessage.createdAt,
+      senderId: newMessage.senderId,
+    };
+
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("newMessage", newMessage);
+      io.to(receiverSocketId).emit("lastMessageUpdate", {
+        userId: senderId,
+        lastMessage: lastMsgPayload,
+      });
     }
     if (senderSocketId) {
       io.to(senderSocketId).emit("newMessage", newMessage);
+      io.to(senderSocketId).emit("lastMessageUpdate", {
+        userId: receiverId,
+        lastMessage: lastMsgPayload,
+      });
     }
 
     // ✅ Send response only ONCE

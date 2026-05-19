@@ -1,10 +1,78 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap');
 @import "tailwindcss";
 
-*{
+/* ── Base reset ────────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
   font-family: "Outfit", sans-serif;
+  -webkit-tap-highlight-color: transparent; /* remove grey flash on tap (iOS) */
 }
 
-::-webkit-scrollbar{
-  display: none;
+/* Full-height fix for iOS Safari — dvh is the modern fix, with fallback */
+html {
+  height: 100%;
+  height: -webkit-fill-available;
+}
+
+body {
+  height: 100%;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+#root {
+  height: 100%;
+  min-height: 100dvh;
+}
+
+/* ── Thin custom scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(129, 133, 178, 0.3);
+  border-radius: 99px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 133, 178, 0.6);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(129, 133, 178, 0.3) transparent;
+}
+
+/* ── Typing bounce dots ────────────────────────────────────────────────────── */
+@keyframes bounce-dot {
+  0%, 80%, 100% { transform: translateY(0); }
+  40%           { transform: translateY(-6px); }
+}
+
+/* ── Prevent zoom on input focus (iOS) ────────────────────────────────────── */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea {
+  font-size: 16px; /* iOS won't zoom if font-size >= 16px */
+}
+
+/* ── Safe-area utility ─────────────────────────────────────────────────────── */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
 }
