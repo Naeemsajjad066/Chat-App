@@ -10,10 +10,43 @@ import DateSeparator from "./chat/DateSeparator";
 import TypingIndicator from "./chat/TypingIndicator";
 import Lightbox from "./ui/Lightbox";
 import Modal from "./ui/Modal";
+import Spinner from "./ui/Spinner";
 import toast from "react-hot-toast";
 
+// ── Message skeleton ──────────────────────────────────────────────────────────
+function MessageSkeleton({ align = "left" }) {
+  const isRight = align === "right";
+  return (
+    <div className={`flex items-end gap-2 ${isRight ? "flex-row-reverse" : ""}`} aria-hidden="true">
+      <div className="w-7 h-7 rounded-full bg-white/[0.07] animate-pulse flex-shrink-0" />
+      <div className={`space-y-1.5 ${isRight ? "items-end" : "items-start"} flex flex-col`}>
+        <div className={`h-9 rounded-2xl animate-pulse bg-white/[0.07] ${
+          isRight ? "w-40 rounded-br-sm" : "w-48 rounded-bl-sm"
+        }`} />
+      </div>
+    </div>
+  );
+}
+
+function MessageSkeletonGroup() {
+  return (
+    <div className="flex flex-col gap-3 py-4 px-1" aria-busy="true" aria-label="Loading messages">
+      <MessageSkeleton align="left" />
+      <MessageSkeleton align="right" />
+      <MessageSkeleton align="left" />
+      <div className="flex items-end gap-2 flex-row-reverse" aria-hidden="true">
+        <div className="w-7 h-7 rounded-full bg-white/[0.07] animate-pulse flex-shrink-0" />
+        <div className="h-16 w-32 rounded-2xl rounded-br-sm animate-pulse bg-white/[0.07]" />
+      </div>
+      <MessageSkeleton align="left" />
+      <MessageSkeleton align="right" />
+      <MessageSkeleton align="left" />
+    </div>
+  );
+}
+
 // ── Delete confirmation content ───────────────────────────────────────────────
-function DeleteConfirmContent({ onConfirm, onCancel }) {
+function DeleteConfirmContent({ onConfirm, onCancel, isDeleting }) {
   return (
     <>
       <div className="flex items-center gap-3 mb-3">
@@ -28,8 +61,25 @@ function DeleteConfirmContent({ onConfirm, onCancel }) {
         Permanently deletes all messages for both people. This cannot be undone.
       </p>
       <div className="flex gap-3">
-        <button onClick={onCancel} className="flex-1 py-3 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 active:bg-white/10 transition text-sm font-medium">Cancel</button>
-        <button onClick={onConfirm} className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800 text-white transition text-sm font-medium">Delete</button>
+        <button
+          onClick={onCancel}
+          disabled={isDeleting}
+          className="flex-1 py-3 rounded-xl border border-white/10 text-gray-300
+            hover:bg-white/5 active:bg-white/10 transition text-sm font-medium
+            disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={isDeleting}
+          className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 active:bg-red-800
+            text-white transition text-sm font-medium flex items-center justify-center gap-2
+            disabled:opacity-70 disabled:cursor-not-allowed"
+        >
+          {isDeleting && <Spinner size="sm" />}
+          {isDeleting ? "Deleting…" : "Delete"}
+        </button>
       </div>
     </>
   );
@@ -40,6 +90,7 @@ function ChatContainer() {
   const {
     messages, setSelectedUser, selectedUser,
     sendMessage, getMessages, typingUsers, deleteMessages,
+    isLoadingMessages, isSendingMessage, isDeletingMessages,
   } = useContext(ChatContext);
   const { authUser, onlineUser, socket } = useContext(AuthContext);
 
@@ -48,6 +99,9 @@ function ChatContainer() {
   const [lightboxSrc, setLightboxSrc]         = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [sendingImage, setSendingImage]       = useState(false);
+
+  // Any ongoing send (text via context OR image via local state)
+  const isBusy = isSendingMessage || sendingImage;
 
   const isTyping = selectedUser && typingUsers.has(selectedUser._id);
   const isOnline = selectedUser && onlineUser.includes(String(selectedUser._id));
@@ -63,13 +117,13 @@ function ChatContainer() {
   // ── Send text ─────────────────────────────────────────────────────────────
   const handleSend = useCallback(async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isBusy) return;
     stopTyping();
     const text = input.trim();
     setInput("");
     await sendMessage({ text });
     inputRef.current?.focus();
-  }, [input, sendMessage, stopTyping]);
+  }, [input, isBusy, sendMessage, stopTyping]);
 
   // ── Send image ────────────────────────────────────────────────────────────
   const handleImage = useCallback(async (e) => {
@@ -88,6 +142,18 @@ function ChatContainer() {
   }, [sendMessage]);
 
   const handleImageClick = useCallback((src) => setLightboxSrc(src), []);
+
+  // Close modal after deletion completes
+  useEffect(() => {
+    if (!isDeletingMessages && showDeleteModal) {
+      // Only auto-close when deletion finishes (not on first render)
+    }
+  }, [isDeletingMessages]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleConfirmDelete = useCallback(async () => {
+    await deleteMessages();
+    setShowDeleteModal(false);
+  }, [deleteMessages]);
 
   // ── Empty state ───────────────────────────────────────────────────────────
   if (!selectedUser) {
@@ -141,16 +207,23 @@ function ChatContainer() {
         <div className="flex-1 min-w-0">
           <p className="text-white font-semibold text-sm leading-tight truncate">{selectedUser?.fullName}</p>
           <p className="text-xs leading-tight mt-0.5">
-            {isTyping ? <span className="text-violet-400">typing…</span>
-              : isOnline ? <span className="text-green-400">Online</span>
+            {isLoadingMessages
+              ? <span className="text-gray-600">Loading…</span>
+              : isTyping
+              ? <span className="text-violet-400">typing…</span>
+              : isOnline
+              ? <span className="text-green-400">Online</span>
               : <span className="text-gray-500">Offline</span>}
           </p>
         </div>
 
         <button
           onClick={() => setShowDeleteModal(true)}
+          disabled={isLoadingMessages}
           title="Delete conversation"
-          className="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition flex-shrink-0"
+          className="w-9 h-9 flex items-center justify-center rounded-full text-gray-500
+            hover:text-red-400 hover:bg-red-500/10 active:bg-red-500/15 transition flex-shrink-0
+            disabled:opacity-30 disabled:cursor-not-allowed"
           aria-label="Delete conversation"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -161,7 +234,12 @@ function ChatContainer() {
 
       {/* ── Messages ── */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-1" role="log" aria-live="polite" aria-label="Messages">
-        {messages.length === 0 && (
+
+        {/* Loading skeleton */}
+        {isLoadingMessages && <MessageSkeletonGroup />}
+
+        {/* Empty state — only after loading finishes */}
+        {!isLoadingMessages && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-600 py-10">
             <div className="w-14 h-14 rounded-full bg-violet-500/10 flex items-center justify-center">
               <svg className="w-7 h-7 text-violet-400/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -173,7 +251,7 @@ function ChatContainer() {
           </div>
         )}
 
-        {messages.map((msg, index) => {
+        {!isLoadingMessages && messages.map((msg, index) => {
           const isSender = msg.senderId === authUser._id;
           const prevMsg  = messages[index - 1];
           const showDate = !prevMsg || !isSameDay(prevMsg.createdAt, msg.createdAt);
@@ -192,23 +270,21 @@ function ChatContainer() {
           );
         })}
 
-        {isTyping && <TypingIndicator user={selectedUser} />}
+        {!isLoadingMessages && isTyping && <TypingIndicator user={selectedUser} />}
         <div ref={scrollRef} />
       </div>
 
       {/* ── Input bar ── */}
       <div className="flex-shrink-0 px-3 pt-2 pb-3 border-t border-white/[0.07] bg-[#0c0b18]">
 
-        {/* Image uploading indicator */}
-        {sendingImage && (
+        {/* Uploading / sending indicator */}
+        {isBusy && (
           <div className="flex items-center gap-2 px-4 py-1.5 mb-2 rounded-xl
             bg-violet-500/10 border border-violet-500/20">
-            <svg className="w-3.5 h-3.5 text-violet-400 animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            <span className="text-xs text-violet-300">Uploading image…</span>
+            <Spinner size="sm" className="text-violet-400" />
+            <span className="text-xs text-violet-300">
+              {sendingImage ? "Uploading image…" : "Sending…"}
+            </span>
           </div>
         )}
 
@@ -223,16 +299,16 @@ function ChatContainer() {
               type="text"
               placeholder="Message…"
               aria-label="Message input"
-              disabled={sendingImage}
+              disabled={isBusy}
               className="flex-1 py-3 bg-transparent outline-none text-white text-base
                 placeholder-gray-600 min-w-0 disabled:opacity-50"
             />
             <input onChange={handleImage} type="file" id="chat-image"
-              accept="image/png,image/jpeg,image/webp" hidden disabled={sendingImage} />
+              accept="image/png,image/jpeg,image/webp" hidden disabled={isBusy} />
             <label
-              htmlFor={sendingImage ? undefined : "chat-image"}
+              htmlFor={isBusy ? undefined : "chat-image"}
               className={`flex-shrink-0 p-1 transition
-                ${sendingImage
+                ${isBusy
                   ? "text-gray-700 cursor-not-allowed"
                   : "cursor-pointer text-gray-500 hover:text-gray-300 active:text-gray-200"}`}
               aria-label="Attach image"
@@ -248,25 +324,31 @@ function ChatContainer() {
           </div>
           <button
             type="submit"
-            disabled={!input.trim() || sendingImage}
+            disabled={!input.trim() || isBusy}
             aria-label="Send message"
             className="w-11 h-11 flex-shrink-0 flex items-center justify-center
               bg-violet-600 hover:bg-violet-500 active:bg-violet-700
               disabled:opacity-30 disabled:cursor-not-allowed
               rounded-full transition-all duration-150 active:scale-95"
           >
-            <svg className="w-4 h-4 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
+            {isSendingMessage
+              ? <Spinner size="sm" />
+              : (
+                <svg className="w-4 h-4 text-white translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              )
+            }
           </button>
         </form>
       </div>
 
       <Lightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
-      <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)}>
+      <Modal open={showDeleteModal} onClose={() => !isDeletingMessages && setShowDeleteModal(false)}>
         <DeleteConfirmContent
-          onConfirm={() => { setShowDeleteModal(false); deleteMessages(); }}
+          onConfirm={handleConfirmDelete}
           onCancel={() => setShowDeleteModal(false)}
+          isDeleting={isDeletingMessages}
         />
       </Modal>
     </div>

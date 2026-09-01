@@ -10,15 +10,21 @@ export const ChatContext = createContext(null);
 export function ChatProvider({ children }) {
   const { socket } = useContext(AuthContext);
 
-  const [messages,       setMessages]       = useState([]);
-  const [users,          setUsers]          = useState([]);
-  const [selectedUser,   setSelectedUser]   = useState(() => {
+  const [messages,           setMessages]           = useState([]);
+  const [users,              setUsers]              = useState([]);
+  const [selectedUser,       setSelectedUser]       = useState(() => {
     const id = localStorage.getItem("selectedUserId");
     return id ? { _id: id } : null;
   });
-  const [unseenMessages, setUnseenMessages] = useState({});
-  const [lastMessages,   setLastMessages]   = useState({});
-  const [typingUsers,    setTypingUsers]    = useState(new Set());
+  const [unseenMessages,     setUnseenMessages]     = useState({});
+  const [lastMessages,       setLastMessages]       = useState({});
+  const [typingUsers,        setTypingUsers]        = useState(new Set());
+
+  // ── Loading states ────────────────────────────────────────────────────────
+  const [isLoadingUsers,     setIsLoadingUsers]     = useState(false);
+  const [isLoadingMessages,  setIsLoadingMessages]  = useState(false);
+  const [isSendingMessage,   setIsSendingMessage]   = useState(false);
+  const [isDeletingMessages, setIsDeletingMessages] = useState(false);
 
   const typingTimers = useRef({});
 
@@ -134,6 +140,7 @@ export function ChatProvider({ children }) {
 
   // ── Actions ───────────────────────────────────────────────────────────────
   const getUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
     try {
       const { data } = await messageApi.getUsers();
       if (!data.success) return;
@@ -149,11 +156,16 @@ export function ChatProvider({ children }) {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load users.");
+    } finally {
+      setIsLoadingUsers(false);
     }
   }, []);
 
   const getMessages = useCallback(async (userId) => {
     if (!userId) return;
+    setIsLoadingMessages(true);
+    // Clear stale messages immediately so old content doesn't flash
+    setMessages([]);
     try {
       const { data } = await messageApi.getMessages(userId);
       if (!data.success) return;
@@ -164,11 +176,14 @@ export function ChatProvider({ children }) {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to load messages.");
+    } finally {
+      setIsLoadingMessages(false);
     }
   }, []);
 
   const sendMessage = useCallback(async (messageData) => {
     if (!selectedUser) return;
+    setIsSendingMessage(true);
     try {
       const { data } = await messageApi.sendMessage(selectedUser._id, messageData);
       if (!data.success) { toast.error(data.message); return; }
@@ -176,12 +191,15 @@ export function ChatProvider({ children }) {
       setLastMessages((prev) => ({ ...prev, [selectedUser._id]: data.newMessage }));
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to send message.");
+    } finally {
+      setIsSendingMessage(false);
     }
   }, [selectedUser]);
 
   const deleteMessages = useCallback(async () => {
     if (!selectedUser) return;
     if (!messages.length) { toast.error("No messages to delete."); return; }
+    setIsDeletingMessages(true);
     try {
       const { data } = await messageApi.deleteMessages(selectedUser._id);
       if (!data.success) { toast.error(data.message); return; }
@@ -191,6 +209,8 @@ export function ChatProvider({ children }) {
       toast.success("Conversation deleted.");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to delete messages.");
+    } finally {
+      setIsDeletingMessages(false);
     }
   }, [selectedUser, messages]);
 
@@ -198,6 +218,7 @@ export function ChatProvider({ children }) {
     <ChatContext.Provider value={{
       messages, users, selectedUser, unseenMessages,
       lastMessages, typingUsers,
+      isLoadingUsers, isLoadingMessages, isSendingMessage, isDeletingMessages,
       setSelectedUser, setUnseenMessages,
       getUsers, getMessages, sendMessage, deleteMessages,
     }}>
