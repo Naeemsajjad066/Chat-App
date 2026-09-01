@@ -11,7 +11,7 @@ const emailSchema = Yup.string()
   .required("Email is required.")
   .email("Enter a valid email address.")
   .matches(
-    /^[a-zA-Z][a-zA-Z0-9._%+\-]*@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/,
+    /^[a-zA-Z][a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
     "Email must start with a letter and have a valid domain (e.g. you@example.com)."
   );
 
@@ -35,7 +35,7 @@ const fullNameSchema = Yup.string()
   .matches(/[a-zA-Z]/, "Name must contain letters, not just numbers.")
   // Only letters (incl. accented), spaces, hyphens, apostrophes
   .matches(
-    /^[a-zA-ZÀ-ÿ' \-]+$/,
+    /^[a-zA-ZÀ-ÿ' -]+$/,
     "Name can only contain letters, spaces, hyphens, and apostrophes."
   );
 
