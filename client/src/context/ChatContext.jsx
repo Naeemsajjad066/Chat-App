@@ -3,10 +3,12 @@ import toast from "react-hot-toast";
 import { messageApi } from "../api/message.api.js";
 import { AuthContext } from "./AuthContext.jsx";
 
+// ChatContext and ChatProvider are exported from the same file.
+// eslint-disable-next-line react-refresh/only-export-components
 export const ChatContext = createContext(null);
 
 export function ChatProvider({ children }) {
-  const { socket, authUser } = useContext(AuthContext);
+  const { socket } = useContext(AuthContext);
 
   const [messages,       setMessages]       = useState([]);
   const [users,          setUsers]          = useState([]);
@@ -20,23 +22,49 @@ export function ChatProvider({ children }) {
 
   const typingTimers = useRef({});
 
-  // ── Persist selected user ─────────────────────────────────────────────────
+  // ── Persist selected user + notify server which chat is open ─────────────
+  // Use a ref so the socket-connect effect can read the latest selectedUser
+  const selectedUserRef = useRef(selectedUser);
+  useEffect(() => { selectedUserRef.current = selectedUser; }, [selectedUser]);
+
+  // Emit openChat whenever selectedUser changes
   useEffect(() => {
-    if (selectedUser?._id) localStorage.setItem("selectedUserId", selectedUser._id);
-    else localStorage.removeItem("selectedUserId");
-  }, [selectedUser]);
+    if (!socket) return;
+    if (selectedUser?._id) {
+      localStorage.setItem("selectedUserId", selectedUser._id);
+      socket.emit("openChat", { withUserId: selectedUser._id });
+    } else {
+      localStorage.removeItem("selectedUserId");
+      socket.emit("closeChat");
+    }
+  }, [selectedUser, socket]);
+
+  // Also emit openChat when socket first connects (page load race condition fix)
+  useEffect(() => {
+    if (!socket) return;
+    const onConnect = () => {
+      if (selectedUserRef.current?._id) {
+        socket.emit("openChat", { withUserId: selectedUserRef.current._id });
+      }
+    };
+    socket.on("connect", onConnect);
+    // If already connected, fire immediately
+    if (socket.connected && selectedUserRef.current?._id) {
+      socket.emit("openChat", { withUserId: selectedUserRef.current._id });
+    }
+    return () => socket.off("connect", onConnect);
+  }, [socket]);
 
   // ── Socket subscriptions ──────────────────────────────────────────────────
   useEffect(() => {
     if (!socket) return;
 
     const onNewMessage = (msg) => {
-      // Update last message for the conversation
       setLastMessages((prev) => ({ ...prev, [msg.senderId]: msg }));
 
       if (selectedUser?._id === msg.senderId) {
-        msg.seen = true;
-        setMessages((prev) => [...prev, msg]);
+        // Mark as seen locally without mutating the original socket object
+        setMessages((prev) => [...prev, { ...msg, seen: true }]);
         messageApi.markSeen(msg._id).catch(() => {});
       } else {
         setUnseenMessages((prev) => ({
@@ -46,10 +74,32 @@ export function ChatProvider({ children }) {
       }
     };
 
+    // Server pushes sidebar last-message updates without sending full newMessage to sender
+    const onLastMessageUpdate = ({ userId, lastMessage }) => {
+      setLastMessages((prev) => ({ ...prev, [userId]: lastMessage }));
+    };
+
     const onMessagesDeleted = ({ withUser }) => {
       if (selectedUser?._id === withUser) setMessages([]);
       setLastMessages((p) => { const n = { ...p }; delete n[withUser]; return n; });
       setUnseenMessages((p) => { const n = { ...p }; delete n[withUser]; return n; });
+    };
+
+    // Receiver opened the chat — mark our sent messages as seen immediately
+    const onMessagesSeen = ({ byUserId, messageIds }) => {
+      console.log("[messagesSeen] byUserId=", byUserId, "messageIds=", messageIds);
+      const idSet = new Set(messageIds.map(String));
+      setMessages((prev) =>
+        prev.map((m) =>
+          idSet.has(String(m._id)) ? { ...m, seen: true } : m
+        )
+      );
+      // Also update the last message seen status in the sidebar
+      setLastMessages((prev) => {
+        const entry = prev[byUserId];
+        if (!entry) return prev;
+        return { ...prev, [byUserId]: { ...entry, seen: true } };
+      });
     };
 
     const onUserTyping = ({ fromUserId }) => {
@@ -65,16 +115,20 @@ export function ChatProvider({ children }) {
       setTypingUsers((prev) => { const n = new Set(prev); n.delete(fromUserId); return n; });
     };
 
-    socket.on("newMessage",      onNewMessage);
-    socket.on("messagesDeleted", onMessagesDeleted);
-    socket.on("userTyping",      onUserTyping);
-    socket.on("userStopTyping",  onUserStopTyping);
+    socket.on("newMessage",        onNewMessage);
+    socket.on("lastMessageUpdate", onLastMessageUpdate);
+    socket.on("messagesDeleted",   onMessagesDeleted);
+    socket.on("messagesSeen",      onMessagesSeen);
+    socket.on("userTyping",        onUserTyping);
+    socket.on("userStopTyping",    onUserStopTyping);
 
     return () => {
-      socket.off("newMessage",      onNewMessage);
-      socket.off("messagesDeleted", onMessagesDeleted);
-      socket.off("userTyping",      onUserTyping);
-      socket.off("userStopTyping",  onUserStopTyping);
+      socket.off("newMessage",        onNewMessage);
+      socket.off("lastMessageUpdate", onLastMessageUpdate);
+      socket.off("messagesDeleted",   onMessagesDeleted);
+      socket.off("messagesSeen",      onMessagesSeen);
+      socket.off("userTyping",        onUserTyping);
+      socket.off("userStopTyping",    onUserStopTyping);
     };
   }, [socket, selectedUser]);
 

@@ -36,7 +36,7 @@ export default function App() {
   if (isCheckingAuth) return <AuthLoader />;
 
   return (
-    <div className="bg-[url('/bgImage.svg')] bg-cover bg-center h-dvh overflow-hidden">
+    <>
       <Toaster
         position="top-center"
         toastOptions={{
@@ -55,11 +55,26 @@ export default function App() {
       />
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/"        element={authUser ? <HomePage />    : <Navigate to="/login" replace />} />
-          <Route path="/login"   element={!authUser ? <LoginPage />  : <Navigate to="/"      replace />} />
-          <Route path="/profile" element={authUser ? <ProfilePage /> : <Navigate to="/login" replace />} />
+          {/* Chat page — fixed viewport, no scroll */}
+          <Route path="/"
+            element={authUser
+              ? <div className="bg-[url('/bgImage.svg')] bg-cover bg-center h-dvh"><HomePage /></div>
+              : <Navigate to="/login" replace />}
+          />
+          {/* Auth page — exact screen height, no scroll */}
+          <Route path="/login"
+            element={!authUser
+              ? <div className="bg-[url('/bgImage.svg')] bg-cover bg-center h-dvh overflow-hidden"><LoginPage /></div>
+              : <Navigate to="/" replace />}
+          />
+          {/* Profile page */}
+          <Route path="/profile"
+            element={authUser
+              ? <div className="bg-[url('/bgImage.svg')] bg-cover bg-center min-h-dvh"><ProfilePage /></div>
+              : <Navigate to="/login" replace />}
+          />
         </Routes>
       </Suspense>
-    </div>
+    </>
   );
 }

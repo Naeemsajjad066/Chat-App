@@ -1,7 +1,7 @@
 import cloudinary from "../config/cloudinary.js";
 import Message from "../models/message.js";
 import User from "../models/User.js";
-import { io, userSocketMap } from "../server.js";
+import { io, userSocketMap, receiverCurrentChat } from "../server.js";
 
 // ✅ Get all users except logged in user
 export const getUsersForSidebar = async (req, res) => {
@@ -67,11 +67,23 @@ export const getMessages = async (req, res) => {
       ],
     });
 
-    // Mark messages as seen
-    await Message.updateMany(
-      { senderId: selectedUserId, receiverId: myId },
-      { seen: true }
-    );
+    // Mark all incoming messages as seen
+    const unseenIds = messages
+      .filter((m) => String(m.senderId) === String(selectedUserId) && !m.seen)
+      .map((m) => m._id);
+
+    if (unseenIds.length > 0) {
+      await Message.updateMany({ _id: { $in: unseenIds } }, { seen: true });
+
+      // Tell the sender their messages have been seen
+      const senderSocketId = userSocketMap[String(selectedUserId)];
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messagesSeen", {
+          byUserId: String(myId),
+          messageIds: unseenIds.map(String),
+        });
+      }
+    }
 
     res.json({ success: true, messages });
   } catch (error) {
@@ -84,11 +96,22 @@ export const getMessages = async (req, res) => {
 
 
 
-// ✅ Mark individual message as seen
+// ✅ Mark individual message as seen (called when receiver is already in the chat)
 export const markMessageAsSeen = async (req, res) => {
   try {
     const { id } = req.params;
-    await Message.findByIdAndUpdate(id, { seen: true });
+    const msg = await Message.findByIdAndUpdate(id, { seen: true }, { new: true });
+    if (!msg) return res.json({ success: false, message: "Message not found." });
+
+    // Tell the sender immediately
+    const senderSocketId = userSocketMap[String(msg.senderId)];
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messagesSeen", {
+        byUserId: String(msg.receiverId),
+        messageIds: [String(msg._id)],
+      });
+    }
+
     res.json({ success: true });
   } catch (error) {
     console.log(error.message);
@@ -181,14 +204,31 @@ export const sendMessage = async (req, res) => {
         lastMessage: lastMsgPayload,
       });
     }
+    // Do NOT echo newMessage back to the sender — they already have it
+    // from the HTTP response. Just update their sidebar last-message.
     if (senderSocketId) {
-      io.to(senderSocketId).emit("newMessage", newMessage);
       io.to(senderSocketId).emit("lastMessageUpdate", {
         userId: receiverId,
         lastMessage: lastMsgPayload,
       });
     }
 
+    // If receiver is online and already viewing this conversation,
+    // mark as seen immediately and notify sender
+    if (receiverSocketId) {
+      const receiverOpenChat = receiverCurrentChat[String(receiverId)];
+      console.log(`[sendMessage] receiverId=${receiverId} receiverOpenChat=${receiverOpenChat} senderId=${senderId}`);
+      if (receiverOpenChat && String(receiverOpenChat) === String(senderId)) {
+        await Message.findByIdAndUpdate(newMessage._id, { seen: true });
+        if (senderSocketId) {
+          io.to(senderSocketId).emit("messagesSeen", {
+            byUserId: String(receiverId),
+            messageIds: [String(newMessage._id)],
+          });
+        }
+        console.log(`[sendMessage] auto-marked seen, notified sender=${senderId}`);
+      }
+    }
     // ✅ Send response only ONCE
     res.status(200).json({ success: true, newMessage });
   } catch (error) {
