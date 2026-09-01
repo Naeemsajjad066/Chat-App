@@ -4,6 +4,9 @@ import { io } from "socket.io-client";
 import { authApi } from "../api/auth.api.js";
 import api from "../api/client.js";
 
+// AuthContext and AuthProvider are exported from the same file.
+// The react-refresh rule flags this but it's the standard React context pattern.
+// eslint-disable-next-line react-refresh/only-export-components
 export const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -49,7 +52,7 @@ export function AuthProvider({ children }) {
       }
     })();
     return () => socketRef.current?.disconnect();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function _clearSession(showToast = false) {

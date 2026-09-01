@@ -3,10 +3,12 @@ import toast from "react-hot-toast";
 import { messageApi } from "../api/message.api.js";
 import { AuthContext } from "./AuthContext.jsx";
 
+// ChatContext and ChatProvider are exported from the same file.
+// eslint-disable-next-line react-refresh/only-export-components
 export const ChatContext = createContext(null);
 
 export function ChatProvider({ children }) {
-  const { socket, authUser } = useContext(AuthContext);
+  const { socket } = useContext(AuthContext);
 
   const [messages,       setMessages]       = useState([]);
   const [users,          setUsers]          = useState([]);
