@@ -29,6 +29,9 @@ export const io = new Server(server, {
 /** userId → socketId map (in-memory; swap for Redis adapter in multi-instance) */
 export const userSocketMap = {};
 
+/** userId → currently-open chatPartnerId (so we can auto-mark seen on send) */
+export const receiverCurrentChat = {};
+
 io.on("connection", (socket) => {
   const userId = socket.handshake.query.userId;
 
@@ -39,6 +42,16 @@ io.on("connection", (socket) => {
 
   userSocketMap[userId] = socket.id;
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
+
+  // Track which conversation this user has open
+  socket.on("openChat", ({ withUserId }) => {
+    receiverCurrentChat[userId] = withUserId || null;
+    console.log(`[openChat] user=${userId} viewing chat with=${withUserId}`);
+  });
+  socket.on("closeChat", () => {
+    receiverCurrentChat[userId] = null;
+    console.log(`[closeChat] user=${userId}`);
+  });
 
   // Typing indicators
   socket.on("typing", ({ toUserId }) => {
@@ -53,6 +66,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     delete userSocketMap[userId];
+    delete receiverCurrentChat[userId];
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
   });
 });

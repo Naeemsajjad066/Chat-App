@@ -20,10 +20,10 @@ function RightSideBar() {
   const isOnline = onlineUser.includes(String(selectedUser._id));
 
   return (
-    <div className="hidden xl:flex flex-col h-full bg-[#0f0e1a]/80 border-l border-white/5 overflow-y-auto">
+    <div className="hidden xl:flex flex-col h-full bg-[#0c0b18] border-l border-white/[0.07]">
 
-      {/* Profile */}
-      <div className="flex flex-col items-center pt-10 pb-6 px-5 gap-3">
+      {/* Profile — fixed, never scrolls */}
+      <div className="flex-shrink-0 flex flex-col items-center pt-8 pb-5 px-5 gap-3">
         <Avatar
           src={selectedUser?.profilePic}
           alt={selectedUser.fullName}
@@ -43,10 +43,10 @@ function RightSideBar() {
         )}
       </div>
 
-      <hr className="border-white/8 mx-5" />
+      <hr className="border-white/[0.07] mx-5 flex-shrink-0" />
 
-      {/* Media */}
-      <div className="px-4 py-4 flex-1">
+      {/* Media — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Shared Media</p>
           <span className="text-xs text-gray-600">{msgImages.length}</span>
