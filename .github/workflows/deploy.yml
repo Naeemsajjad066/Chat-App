@@ -1,34 +1,52 @@
 name: Deploy
 
-# Only runs after CI passes on main.
+# Only runs on push to main.
 # Deploys client and server to Vercel in parallel.
 
 on:
   push:
     branches: [main]
 
-# Prevent overlapping deployments
 concurrency:
   group: deploy-production
   cancel-in-progress: false
 
 jobs:
-  # ── Require CI to pass first ─────────────────────────────────────────────────
-  wait-for-ci:
-    name: Wait for CI
+  # ── Guard — fail fast if required secrets are missing ────────────────────────
+  check-secrets:
+    name: Check required secrets
     runs-on: ubuntu-latest
     steps:
-      - name: CI must pass before deploy
-        run: echo "CI passed — proceeding to deploy"
+      - name: Verify VERCEL_TOKEN is set
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "::error::VERCEL_TOKEN secret is not set."
+            echo "::error::Go to: GitHub repo → Settings → Secrets and variables → Actions → New repository secret"
+            exit 1
+          fi
+          echo "VERCEL_TOKEN is present."
+
+      - name: Verify VITE_BACKEND_URL is set
+        run: |
+          if [ -z "${{ secrets.VITE_BACKEND_URL }}" ]; then
+            echo "::error::VITE_BACKEND_URL secret is not set."
+            exit 1
+          fi
+          echo "VITE_BACKEND_URL is present."
 
   # ── DEPLOY CLIENT ────────────────────────────────────────────────────────────
   deploy-client:
     name: Deploy client → Vercel
     runs-on: ubuntu-latest
-    needs: wait-for-ci
+    needs: check-secrets
     environment:
       name: production-client
       url: ${{ steps.deploy.outputs.url }}
+
+    # Pass token via env var — Vercel CLI reads VERCEL_TOKEN automatically.
+    # Never use --token= flag; an empty value causes "missing token" errors.
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
       - name: Checkout
@@ -45,19 +63,20 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Pull Vercel environment
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production
         working-directory: client
 
       - name: Build for Vercel
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod
         working-directory: client
         env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
 
       - name: Deploy to Vercel
         id: deploy
         run: |
-          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          url=$(vercel deploy --prebuilt --prod)
           echo "url=$url" >> $GITHUB_OUTPUT
         working-directory: client
 
@@ -65,10 +84,13 @@ jobs:
   deploy-server:
     name: Deploy server → Vercel
     runs-on: ubuntu-latest
-    needs: wait-for-ci
+    needs: check-secrets
     environment:
       name: production-server
       url: ${{ steps.deploy.outputs.url }}
+
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
     steps:
       - name: Checkout
@@ -85,16 +107,16 @@ jobs:
         run: npm install --global vercel@latest
 
       - name: Pull Vercel environment
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel pull --yes --environment=production
         working-directory: server
 
       - name: Build for Vercel
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel build --prod
         working-directory: server
 
       - name: Deploy to Vercel
         id: deploy
         run: |
-          url=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          url=$(vercel deploy --prebuilt --prod)
           echo "url=$url" >> $GITHUB_OUTPUT
         working-directory: server
