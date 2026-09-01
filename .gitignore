@@ -50,6 +50,9 @@ desktop.ini
 .parcel-cache/
 *.tsbuildinfo
 
+# ── Vercel (root level only — client/.vercel and server/.vercel are committed) ─
+/.vercel
+
 # ── Misc ──────────────────────────────────────────────────────────────────────
 coverage/
 .nyc_output/
