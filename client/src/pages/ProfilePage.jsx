@@ -14,6 +14,7 @@ function ProfilePage() {
   const [name, setName]                       = useState(authUser.fullName);
   const [bio, setBio]                         = useState(authUser.bio || "");
   const [isSaving, setIsSaving]               = useState(false);
+  const [isDeleting, setIsDeleting]           = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const previewSrc = selectedImg
@@ -42,8 +43,10 @@ function ProfilePage() {
   };
 
   const handleDelete = async () => {
+    setIsDeleting(true);
     const ok = await deleteProfile();
     if (ok) navigate("/login");
+    setIsDeleting(false);
   };
 
   return (
@@ -176,7 +179,7 @@ function ProfilePage() {
       </div>
 
       {/* Delete confirmation modal */}
-      <Modal open={showDeleteModal} onClose={() => setShowDeleteModal(false)}>
+      <Modal open={showDeleteModal} onClose={() => !isDeleting && setShowDeleteModal(false)}>
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
             <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -198,6 +201,7 @@ function ProfilePage() {
           <Button
             variant="outline"
             onClick={() => setShowDeleteModal(false)}
+            disabled={isDeleting}
             className="flex-1 py-3"
           >
             Cancel
@@ -205,9 +209,10 @@ function ProfilePage() {
           <Button
             variant="danger"
             onClick={handleDelete}
+            loading={isDeleting}
             className="flex-1 py-3 font-semibold"
           >
-            Delete Forever
+            {isDeleting ? "Deleting…" : "Delete Forever"}
           </Button>
         </div>
       </Modal>

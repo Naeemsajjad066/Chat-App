@@ -5,7 +5,7 @@ import Avatar from "./ui/Avatar";
 import Lightbox from "./ui/Lightbox";
 
 function RightSideBar() {
-  const { selectedUser, messages } = useContext(ChatContext);
+  const { selectedUser, messages, isLoadingMessages } = useContext(ChatContext);
   const { onlineUser } = useContext(AuthContext);
 
   const [msgImages, setMsgImages] = useState([]);
@@ -49,10 +49,16 @@ function RightSideBar() {
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Shared Media</p>
-          <span className="text-xs text-gray-600">{msgImages.length}</span>
+          <span className="text-xs text-gray-600">{isLoadingMessages ? "—" : msgImages.length}</span>
         </div>
 
-        {msgImages.length === 0 ? (
+        {isLoadingMessages ? (
+          <div className="grid grid-cols-2 gap-2" aria-busy="true" aria-label="Loading media">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="aspect-square rounded-lg bg-white/[0.07] animate-pulse" aria-hidden="true" />
+            ))}
+          </div>
+        ) : msgImages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-gray-700 gap-2">
             <svg className="w-7 h-7 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
