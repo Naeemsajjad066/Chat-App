@@ -1,7 +1,4 @@
-name: CI
-
-# Runs on every push and pull request to any branch.
-# Lints + builds both apps so broken code never merges to main.
+name: CI/CD
 
 on:
   push:
@@ -9,22 +6,23 @@ on:
   pull_request:
     branches: ["**"]
 
-jobs:
-  # ── CLIENT ──────────────────────────────────────────────────────────────────
-  client:
-    name: Client — lint & build
-    runs-on: ubuntu-latest
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # ── CLIENT ───────────────────────────────────────────────────────────────────
+  client:
+    name: Client — build & lint
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: client
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -33,30 +31,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Vite needs the env var at build time — use a dummy value in CI
+      - name: Set production env
+        env:
+          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
+        run: |
+          if [ -n "$VITE_BACKEND_URL" ]; then
+            printf '%s\n' "VITE_BACKEND_URL=$VITE_BACKEND_URL" > .env.production
+          fi
+
       - name: Build
         run: npm run build
-        env:
-          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL || 'https://placeholder.example.com' }}
 
       - name: Lint
         run: npm run lint
 
-  # ── SERVER ──────────────────────────────────────────────────────────────────
+  # ── SERVER ───────────────────────────────────────────────────────────────────
   server:
-    name: Server — lint & syntax check
+    name: Server — lint & syntax
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: server
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -65,7 +65,59 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Node can type-check ES modules with --input-type=module
-      # This catches import errors, missing files, syntax issues
-      - name: Syntax check entry point
+      - name: Lint
+        run: npm run lint
+
+      - name: Syntax check
         run: node --check server.js
+
+  # ── DEPLOY (main branch only) ────────────────────────────────────────────────
+  deploy-client:
+    name: Deploy client to Vercel
+    needs: [client, server]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Deploy client
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+          VERCEL_PROJECT_ID_CLIENT: ${{ secrets.VERCEL_PROJECT_ID_CLIENT }}
+          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
+        run: |
+          cd client
+          npm install --no-fund --no-audit
+          printf '%s\n' "VITE_BACKEND_URL=$VITE_BACKEND_URL" > .env.production
+          cd ..
+          npx vercel deploy --prod --yes --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE" --project "$VERCEL_PROJECT_ID_CLIENT" --cwd client
+
+  deploy-server:
+    name: Deploy server to Vercel
+    needs: [client, server]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Deploy server
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE }}
+          VERCEL_PROJECT_ID_SERVER: ${{ secrets.VERCEL_PROJECT_ID_SERVER }}
+        run: |
+          cd server
+          npm install --no-fund --no-audit
+          cd ..
+          npx vercel deploy --prod --yes --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE" --project "$VERCEL_PROJECT_ID_SERVER" --cwd server
