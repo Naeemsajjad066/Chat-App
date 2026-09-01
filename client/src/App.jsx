@@ -58,7 +58,7 @@ export default function App() {
           {/* Chat page — fixed viewport, no scroll */}
           <Route path="/"
             element={authUser
-              ? <div className="bg-[url('/bgImage.svg')] bg-cover bg-center h-dvh overflow-hidden"><HomePage /></div>
+              ? <div className="bg-[url('/bgImage.svg')] bg-cover bg-center h-dvh"><HomePage /></div>
               : <Navigate to="/login" replace />}
           />
           {/* Auth page — exact screen height, no scroll */}

@@ -56,21 +56,34 @@ function SideBar() {
   }, [lastMessages, typingUsers, authUser]);
 
   return (
-    <div className={`flex flex-col h-full bg-[#0f0e1a]/80 backdrop-blur-xl border-r border-white/5 ${selectedUser ? "hidden md:flex" : "flex"}`}>
+    <div className={`flex flex-col h-full bg-[#0c0b18] border-r border-white/[0.07] ${selectedUser ? "hidden md:flex" : "flex"}`}>
 
       {/* ── Header ── */}
-      <div className="flex-shrink-0 px-4 pt-safe">
-        <div className="flex items-center justify-between py-4">
-          <img src={assets.logo} alt="logo" className="h-7 object-contain" />
+      <div className="flex-shrink-0 px-4 pt-4">
+        <div className="flex items-center justify-between pb-3">
+          {/* Logo — icon + text so it's always crisp */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-violet-600/25 border border-violet-500/25
+              flex items-center justify-center">
+              <img src={assets.logo_icon} alt="" className="w-4.5 h-4.5" />
+            </div>
+            <span className="text-sm font-bold text-white tracking-tight">QuickChat</span>
+          </div>
 
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-white/10 active:bg-white/15 transition"
+              className="w-9 h-9 flex items-center justify-center rounded-full
+                hover:bg-white/10 active:bg-white/15 transition text-gray-400 hover:text-white"
               aria-label="Menu"
               aria-expanded={menuOpen}
             >
-              <img src={assets.menu_icon} alt="" className="w-5 h-5" aria-hidden="true" />
+              {/* Three-dot vertical icon — sharper than the png */}
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="5"  r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="19" r="1.5" />
+              </svg>
             </button>
 
             {menuOpen && (
@@ -126,7 +139,7 @@ function SideBar() {
       </div>
 
       {/* ── User list ── */}
-      <div className="flex-1 overflow-y-auto px-2 pb-safe" role="list" aria-label="Conversations">
+      <div className="flex-1 overflow-y-auto px-2 pb-2" role="list" aria-label="Conversations">
         {sortedUsers.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-600" role="status">
             <svg className="w-8 h-8 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
